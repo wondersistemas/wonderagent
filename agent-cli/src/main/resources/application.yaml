@@ -1,0 +1,35 @@
+agent:
+  client-id: "CONFIGURE-ME"         # imutável, gerado no onboarding
+  version: "1.0.0-SNAPSHOT"
+  poll-interval-seconds: 300
+
+"%dev":
+  agent:
+    client-id: "dev-local"
+    poll-interval-seconds: 30
+
+quarkus:
+  rest-client:
+    central-api:
+      url: "${agent.central-url:https://deploy.wonder.com.br}"
+      headers:
+        Authorization: "Bearer ${agent.jwt-token:}"
+
+  log:
+    level: INFO
+    file:
+      enable: true
+      path: "C:/ProgramData/WonderAgent/logs/agent.log"
+      rotation:
+        max-file-size: 50M
+        max-backup-index: 5
+
+driver:
+  wildfly:
+    home: "C:/wildfly"
+    management-port: 9990
+    deploy-path: "C:/wildfly/standalone/deployments"
+    artifact-name: "wnfe.war"
+    start-timeout-seconds: 180
+    stop-timeout-seconds: 60
+    health-check-url: "http://localhost:8080/probusweb/health"
