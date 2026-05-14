@@ -4,64 +4,94 @@
 
 - `RuntimeDriver` é mockável — testes de `StateMachine` e `DeployPipeline` não precisam
   de WildFly real
-- `StateDetector` é testado com mocks de processo e porta
-- Testes de integração do `WildflyDriver` requerem WildFly real (rodar manualmente)
+- `WildflyDriver.detectState()` é testado com servidor HTTP embutido (`com.sun.net.httpserver`)
+  simulando a management API, e subclasse de teste que sobrescreve `isProcessAlive()`
+- Testes de integração do `WildflyDriver` (start/stop real) requerem WildFly local e são
+  executados manualmente com o profile `integration-tests`
+- Todos os testes são JUnit 5 puro + Mockito — sem `@QuarkusTest`, sem container CDI
 
 ## Estrutura por módulo
 
 ### agent-model
-Sem lógica — apenas testes de criação de records e enums.
+Records e enums sem lógica comportamental.
+
+| Arquivo | O que testa |
+|---|---|
+| `ArtifactTest` | `coordinates()`, imutabilidade de `withLocalFile()` |
+| `DeployResultTest` | Factories `success()` e `failure()` |
+| `HealthStatusTest` | Factories `ok()` e `unhealthy()` |
+| `RuntimeStateTest` | `needsRecovery()` e `isActionable()` |
 
 ### agent-core
-Testes unitários com Mockito:
-```java
-@ExtendWith(MockitoExtension.class)
-class DeployPipelineTest {
-    @Mock RuntimeDriver driver;
-    @Mock StateMachine stateMachine;
-    @InjectMocks DeployPipeline pipeline;
+Testes com `@ExtendWith(MockitoExtension.class)` e `@InjectMocks`.
 
-    @Test
-    void deploy_quandoRuntimeHung_recuperaAntesDeployar() {
-        when(stateMachine.detectAndRecover()).thenReturn(RuntimeState.STOPPED);
-        when(driver.deploy(any())).thenReturn(DeployResult.success(...));
-        // ...
+| Arquivo | O que testa |
+|---|---|
+| `StateMachineTest` | `detectAndRecover()` para todos os estados, `canDeploy()` |
+| `DeployPipelineTest` | Fluxo completo: parar/não-parar, forceKill fallback, falhas em cada etapa |
+| `AgentOrchestratorTest` | Versão já instalada, atualização, falha de download, falha de deploy, report de status |
+| `ArtifactDownloaderTest` | Construção da URL zsync, reutilização de arquivo existente como input, wrapping de `ZsyncException` |
+
+`@ConfigProperty` é injetado via reflexão nos testes do `AgentOrchestrator`:
+```java
+setField(orchestrator, "clientId", "cliente-abc");
+setField(orchestrator, "agentVersion", "1.0.0-SNAPSHOT");
+```
+
+### agent-drivers
+| Arquivo | O que testa |
+|---|---|
+| `WildflyDriverDeployTest` | Cópia do WAR, escrita/leitura do `.wonder-version`, arquivo fonte inexistente |
+| `WildflyDriverDetectStateTest` | Estados RUNNING, HUNG (porta aberta/fechada), PARTIAL (deployment FAILED), STOPPED |
+
+`WildflyDriverDetectStateTest` usa dois mecanismos para isolar do SO:
+- **Servidor HTTP embutido** na porta 0 (porta aleatória) simulando `/management`
+- **Subclasse `TestableWildflyDriver`** com `isProcessAlive()` sobrescrito para retornar `true`
+
+`@TempDir` isola toda operação de arquivo em diretório temporário descartado após cada teste.
+
+## Executar testes
+
+```bash
+# Unitários (todos os módulos)
+mvn test
+
+# Módulo específico
+mvn test -pl agent-core
+
+# Integração (requer WildFly local rodando)
+mvn verify -Pintegration-tests
+```
+
+## Padrões de injeção em testes
+
+### @ConfigProperty via reflexão
+```java
+private void setField(Object target, String fieldName, Object value) throws Exception {
+    var field = target.getClass().getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
+}
+```
+
+Para `WildflyDriver`, que herda campos da superclasse, a busca percorre a hierarquia:
+```java
+Class<?> clazz = target.getClass();
+while (clazz != null) {
+    try {
+        var field = clazz.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+        return;
+    } catch (NoSuchFieldException e) {
+        clazz = clazz.getSuperclass();
     }
 }
 ```
 
-### agent-drivers
-- Testes unitários: mock das chamadas HTTP (HttpURLConnection) e ProcessBuilder
-- Testes de integração (profile `integration-tests`): WildFly local
-
-### agent-central-client
-Testes com WireMock simulando o servidor central:
+### Zsync mockável via construtor
+`ArtifactDownloader` tem construtor que aceita `Zsync` para injeção de mock:
 ```java
-@QuarkusTest
-class CentralClientTest {
-    // WireMock stub para /api/v1/agents/{id}/desired-state
-}
-```
-
-## Executar testes
-
-```cmd
-# Unitários (todos os módulos)
-mvn test
-
-# Integração (requer WildFly local)
-mvn verify -Pintegration-tests
-```
-
-## Mock de RuntimeDriver para cenários de teste
-
-```java
-// Driver que simula WildFly sempre RUNNING
-public class AlwaysRunningDriver implements RuntimeDriver {
-    public RuntimeState detectState() { return RuntimeState.RUNNING; }
-    public boolean stop() { return true; }
-    public boolean start() { return true; }
-    public HealthStatus healthCheck() { return HealthStatus.healthy(); }
-    // ...
-}
+Zsync zsync = mock(Zsync.class);
+ArtifactDownloader downloader = new ArtifactDownloader(zsync);
 ```

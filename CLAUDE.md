@@ -52,7 +52,7 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - `WonderAgentCommand` com todos os subcomandos Picocli
 - `application.yaml` com todas as propriedades documentadas
 - Profile `native` no `agent-cli/pom.xml` para build do `.exe`
-- `ArtifactDownloader` com download autenticado do Nexus e retry com exponential backoff
+- `ArtifactDownloader` com download via zsync (delta transfer) de S3 público
 - `DriverProducer` com seleção de driver via CDI `Instance<RuntimeDriver>` + `@Named`
 - Comandos `install` e `uninstall` do NSSM implementados
 - Comando `config show` implementado via `ConfigProvider`
@@ -60,7 +60,6 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 ### Pendente / TODOs principais
 - `QuarkusDriver`: placeholder documentado em `docs/drivers/quarkus-driver.md`
 - `ProxyDriver`: placeholder documentado em `docs/drivers/proxy-driver.md`
-- Testes unitários (estrutura definida em `docs/development/testing.md`)
 - Configuração de `reflect-config.json` para Native Image
 
 ## Convenções do projeto
