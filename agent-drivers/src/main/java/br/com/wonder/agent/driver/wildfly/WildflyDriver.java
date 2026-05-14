@@ -13,7 +13,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -161,7 +161,7 @@ public class WildflyDriver implements RuntimeDriver {
     @Override
     public HealthStatus healthCheck() {
         try {
-            HttpURLConnection conn = (HttpURLConnection) new URL(healthCheckUrl).openConnection();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(healthCheckUrl).toURL().openConnection();
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(5000);
             int code = conn.getResponseCode();
@@ -197,7 +197,7 @@ public class WildflyDriver implements RuntimeDriver {
     private String queryManagementApi(String attribute) throws IOException {
         String url = "http://localhost:" + managementPort
                 + "/management?operation=attribute&name=" + attribute;
-        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
         conn.setConnectTimeout(3000);
         conn.setReadTimeout(3000);
         String body = new String(conn.getInputStream().readAllBytes())
@@ -210,7 +210,7 @@ public class WildflyDriver implements RuntimeDriver {
             String url = "http://localhost:" + managementPort
                     + "/management/deployment/" + artifactName
                     + "?operation=attribute&name=status";
-            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setConnectTimeout(3000);
             conn.setReadTimeout(3000);
             if (conn.getResponseCode() == 404) return false;
