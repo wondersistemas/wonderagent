@@ -2,11 +2,13 @@ agent:
   client-id: "CONFIGURE-ME"         # imutável, gerado no onboarding
   version: "1.0.0-SNAPSHOT"
   poll-interval: "PT300S"           # ISO 8601 duration — PT30S=30s, PT5M=5min
+  home: "C:/ProgramData/WonderAgent" # raiz de logs, downloads e wildfly padrão
 
 "%dev":
   agent:
     client-id: "dev-local"
     poll-interval: "PT30S"
+    home: "${user.home}/.wonderagent-dev"
 
 quarkus:
   index-dependency:
@@ -23,7 +25,7 @@ quarkus:
     level: INFO
     file:
       enable: true
-      path: "C:/ProgramData/WonderAgent/logs/agent.log"
+      path: "${agent.home}/logs/agent.log"
       rotation:
         max-file-size: 50M
         max-backup-index: 5
@@ -31,16 +33,16 @@ quarkus:
 driver:
   type: "wildfly"                   # tipo de driver: wildfly, quarkus, proxy
   wildfly:
-    home: "C:/wildfly"
+    home: "${agent.home}/wildfly"   # sobrescreva se o WildFly estiver em outro lugar
     management-port: 9990
-    deploy-path: "C:/wildfly/standalone/deployments"
+    deploy-path: "${driver.wildfly.home}/standalone/deployments"
     artifact-name: "wnfe.war"
     start-timeout-seconds: 180
     stop-timeout-seconds: 60
     health-check-url: "http://localhost:8080/probusweb/health"
 
 download:
-  temp-dir: "${java.io.tmpdir}/wonderagent-downloads"
+  temp-dir: "${agent.home}/downloads"
   connect-timeout-seconds: 30
   read-timeout-seconds: 120
   max-retries: 3
