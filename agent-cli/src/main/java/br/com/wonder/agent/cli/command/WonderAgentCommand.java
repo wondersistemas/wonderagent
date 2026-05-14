@@ -3,6 +3,8 @@ package br.com.wonder.agent.cli.command;
 import br.com.wonder.agent.core.poll.AgentOrchestrator;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
+import io.quarkus.picocli.runtime.annotations.TopCommand;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -15,6 +17,8 @@ import picocli.CommandLine.*;
  * Ver docs/api/agent-cli.md para referência completa.
  */
 @Slf4j
+@TopCommand
+@ApplicationScoped
 @Command(
     name = "wonderagent",
     mixinStandardHelpOptions = true,
@@ -39,6 +43,7 @@ public class WonderAgentCommand implements Runnable {
         // O scheduler do Quarkus mantém o processo vivo
     }
 
+    @ApplicationScoped
     @Command(name = "status", description = "Mostra estado atual do runtime e versão instalada")
     static class StatusCommand implements Runnable {
         @Inject RuntimeDriver driver;
@@ -53,6 +58,7 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @ApplicationScoped
     @Command(name = "detect", description = "Detecta e imprime o estado do runtime sem agir")
     static class DetectCommand implements Runnable {
         @Inject RuntimeDriver driver;
@@ -63,6 +69,7 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @ApplicationScoped
     @Command(name = "check", description = "Executa um ciclo de poll único: verifica e aplica se necessário")
     static class CheckCommand implements Runnable {
         @Inject AgentOrchestrator orchestrator;
@@ -73,6 +80,7 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @ApplicationScoped
     @Command(name = "install", description = "Registra wonderagent como serviço Windows via NSSM")
     static class InstallCommand implements Runnable {
 
@@ -115,6 +123,7 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @ApplicationScoped
     @Command(name = "uninstall", description = "Remove o serviço Windows")
     static class UninstallCommand implements Runnable {
 
@@ -145,11 +154,13 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @ApplicationScoped
     @Command(name = "config", description = "Operações de configuração",
              subcommands = ConfigCommand.ShowCommand.class)
     static class ConfigCommand implements Runnable {
         @Override public void run() { System.out.println("Use: config show"); }
 
+        @ApplicationScoped
         @Command(name = "show", description = "Exibe a configuração ativa")
         static class ShowCommand implements Runnable {
             @Override
@@ -157,7 +168,7 @@ public class WonderAgentCommand implements Runnable {
                 String[] keys = {
                     "agent.client-id",
                     "agent.version",
-                    "agent.poll-interval-seconds",
+                    "agent.poll-interval",
                     "agent.central-url",
                     "driver.type",
                     "driver.wildfly.home",

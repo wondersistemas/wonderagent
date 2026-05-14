@@ -68,10 +68,10 @@
       <id>native</id>
       <properties>
         <quarkus.native.enabled>true</quarkus.native.enabled>
-        <!-- Windows 64: requer Visual Studio Build Tools no PATH -->
-        <quarkus.native.additional-build-args>
-          --initialize-at-build-time=br.com.wonder.agent
-        </quarkus.native.additional-build-args>
+        <!-- x86-64-v2: requer apenas SSE4.2 (Sandy Bridge 2011+), compatível com servidores de clientes antigos -->
+        <!-- Sem esta flag o padrão do GraalVM é x86-64-v3 (AVX2, Haswell+), que não roda em hardware mais velho -->
+        <quarkus.native.additional-build-args>-march=compatibility</quarkus.native.additional-build-args>
+        <!-- Flags de reflection/init centralizadas em META-INF/native-image/br.com.wonder/wonderagent/ -->
       </properties>
     </profile>
   </profiles>

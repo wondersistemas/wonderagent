@@ -16,3 +16,6 @@ target/
 # Não versionar token JWT ou senhas
 application-prod.yaml
 application-local.yaml
+
+# Diretório criado pelo binário nativo ao rodar em Linux (simula C:\ProgramData)
+C:/

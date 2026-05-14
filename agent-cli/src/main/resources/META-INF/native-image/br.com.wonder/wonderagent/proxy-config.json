@@ -1,0 +1,7 @@
+[
+  {
+    "interfaces": [
+      "br.com.wonder.agent.central.CentralClient"
+    ]
+  }
+]

@@ -12,6 +12,7 @@ import br.com.wonder.agent.model.state.RuntimeState;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -27,7 +28,7 @@ import java.time.Instant;
 @ApplicationScoped
 public class AgentOrchestrator {
 
-    @Inject CentralClient centralClient;
+    @Inject @RestClient CentralClient centralClient;
     @Inject DeployPipeline deployPipeline;
     @Inject RuntimeDriver driver;
     @Inject ArtifactDownloader artifactDownloader;
@@ -38,7 +39,7 @@ public class AgentOrchestrator {
     @ConfigProperty(name = "agent.version")
     String agentVersion;
 
-    @Scheduled(every = "{agent.poll-interval-seconds}s")
+    @Scheduled(every = "${agent.poll-interval}")
     public void poll() {
         log.debug("Iniciando ciclo de poll — clientId={}", clientId);
         try {

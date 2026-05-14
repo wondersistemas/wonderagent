@@ -21,10 +21,17 @@ Compilar o agente para executável nativo Windows 64 via GraalVM Native Image.
 
 ## Consequências negativas
 
-- Build requer GraalVM + Visual Studio Build Tools no ambiente de CI
-- Reflection deve ser declarada em `reflect-config.json`
-- Algumas bibliotecas precisam de ajuste para Native Image
-- Tempo de build maior (minutos vs. segundos para JVM)
+- Build do `.exe` de produção requer Windows + Visual Studio Build Tools
+- Reflection deve ser declarada em `reflect-config.json` (ver `META-INF/native-image/`)
+- Módulos JAR dependentes precisam de `META-INF/beans.xml` para serem visíveis ao CDI
+- `@Scheduled(every=...)` requer expressão ISO 8601 isolada — não aceita concatenação de placeholder
+- Tempo de build maior (minutos no Windows vs. segundos para JVM)
+
+## Validação no Linux
+
+O build Native Image funciona no Linux e gera um binário Linux equivalente.
+Usar `mvn clean package -Pnative` no Linux para validar reflection e CDI antes
+de fazer o build definitivo no Windows.
 
 ## Alternativas consideradas
 

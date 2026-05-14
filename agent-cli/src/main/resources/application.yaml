@@ -1,14 +1,18 @@
 agent:
   client-id: "CONFIGURE-ME"         # imutável, gerado no onboarding
   version: "1.0.0-SNAPSHOT"
-  poll-interval-seconds: 300
+  poll-interval: "PT300S"           # ISO 8601 duration — PT30S=30s, PT5M=5min
 
 "%dev":
   agent:
     client-id: "dev-local"
-    poll-interval-seconds: 30
+    poll-interval: "PT30S"
 
 quarkus:
+  index-dependency:
+    zsync:
+      group-id: io.takari.zsync
+      artifact-id: zsync-core
   rest-client:
     central-api:
       url: "${agent.central-url:https://deploy.wonder.com.br}"

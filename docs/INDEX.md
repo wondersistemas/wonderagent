@@ -51,7 +51,7 @@ central via HTTPS e aplica atualizações de forma autônoma.
 
 | Documento | Quando consultar |
 |---|---|
-| [development/building.md](development/building.md) | Build com GraalVM Native Image no Windows |
+| [development/building.md](development/building.md) | Build JVM (Linux/Windows), Native Image (Linux para validação, Windows para `.exe`) |
 | [development/testing.md](development/testing.md) | Estratégia de testes, mocks de driver |
 | [development/adding-a-driver.md](development/adding-a-driver.md) | Passo a passo para implementar novo RuntimeDriver |
 

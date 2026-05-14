@@ -6,6 +6,7 @@ import br.com.wonder.agent.model.deploy.HealthStatus;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Typed;
 import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -28,6 +29,7 @@ import java.time.Instant;
 @Slf4j
 @Named("wildfly")
 @ApplicationScoped
+@Typed(WildflyDriver.class)
 public class WildflyDriver implements RuntimeDriver {
 
     @ConfigProperty(name = "driver.wildfly.home")

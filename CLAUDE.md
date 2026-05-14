@@ -56,11 +56,18 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - `DriverProducer` com seleção de driver via CDI `Instance<RuntimeDriver>` + `@Named`
 - Comandos `install` e `uninstall` do NSSM implementados
 - Comando `config show` implementado via `ConfigProvider`
+- `reflect-config.json`, `resource-config.json`, `proxy-config.json` e `native-image.properties` em `agent-cli/src/main/resources/META-INF/native-image/br.com.wonder/wonderagent/`
+- `META-INF/beans.xml` (`bean-discovery-mode="annotated"`) em `agent-core`, `agent-drivers`, `agent-central-client`
+- Índice Jandex gerado em `agent-model` via `jandex-maven-plugin` 3.1.7
+- `@TopCommand` + `@ApplicationScoped` em todos os subcomandos Picocli
+- `@RestClient` no injection point `AgentOrchestrator#centralClient`
+- `@Typed(WildflyDriver.class)` para evitar ambiguidade CDI com o producer
+- `agent.poll-interval` como ISO 8601 duration (ex: `PT300S`) — `@Scheduled` não aceita concatenação de placeholder
+- Build Native Image validado no Linux: `mvn clean package -Pnative` → binário Linux funcional em ~45s
 
 ### Pendente / TODOs principais
 - `QuarkusDriver`: placeholder documentado em `docs/drivers/quarkus-driver.md`
 - `ProxyDriver`: placeholder documentado em `docs/drivers/proxy-driver.md`
-- Configuração de `reflect-config.json` para Native Image
 
 ## Convenções do projeto
 
@@ -92,13 +99,16 @@ O wonderagent não depende do wnfe — são projetos separados.
 
 ## Build
 
-```cmd
-# JVM (desenvolvimento)
+```bash
+# JVM (desenvolvimento — Linux ou Windows)
 mvn clean package -Dmaven.test.skip=true -pl agent-cli -am
 
-# Native Image (requer x64 Native Tools Command Prompt + GraalVM)
-cd agent-cli
+# Native Image no Linux (validação — gera binário Linux)
+mvn clean package -Pnative -Dmaven.test.skip=true
+
+# Native Image no Windows (produção — gera .exe)
+# Dentro do x64 Native Tools Command Prompt for VS 2022:
 mvn clean package -Pnative -Dmaven.test.skip=true
 ```
 
-Ver `docs/development/building.md` para pré-requisitos completos.
+Ver `docs/development/building.md` para pré-requisitos e troubleshooting.
