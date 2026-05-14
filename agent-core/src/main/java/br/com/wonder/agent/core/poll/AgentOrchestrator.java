@@ -2,6 +2,7 @@ package br.com.wonder.agent.core.poll;
 
 import br.com.wonder.agent.central.CentralClient;
 import br.com.wonder.agent.core.deploy.DeployPipeline;
+import br.com.wonder.agent.core.download.ArtifactDownloader;
 import br.com.wonder.agent.model.config.AgentStatusReport;
 import br.com.wonder.agent.model.config.DesiredState;
 import br.com.wonder.agent.model.deploy.Artifact;
@@ -20,7 +21,7 @@ import java.time.Instant;
  * Loop principal do agente.
  * Executa no intervalo configurado em agent.poll-interval-seconds.
  *
- * Fluxo: fetchDesiredState → compareVersions → [deploy se necessário] → reportStatus
+ * Fluxo: fetchDesiredState → compareVersions → [download e deploy se necessário] → reportStatus
  */
 @Slf4j
 @ApplicationScoped
@@ -29,6 +30,7 @@ public class AgentOrchestrator {
     @Inject CentralClient centralClient;
     @Inject DeployPipeline deployPipeline;
     @Inject RuntimeDriver driver;
+    @Inject ArtifactDownloader artifactDownloader;
 
     @ConfigProperty(name = "agent.client-id")
     String clientId;
@@ -37,7 +39,7 @@ public class AgentOrchestrator {
     String agentVersion;
 
     @Scheduled(every = "{agent.poll-interval-seconds}s")
-    void poll() {
+    public void poll() {
         log.debug("Iniciando ciclo de poll — clientId={}", clientId);
         try {
             DesiredState desired = centralClient.fetchDesiredState(clientId);
@@ -51,8 +53,18 @@ public class AgentOrchestrator {
 
             log.info("Atualização disponível: {} → {}", installedVersion, desired.version());
             Artifact artifact = toArtifact(desired);
-            DeployResult result = deployPipeline.execute(artifact);
 
+            // Baixar artefato do Nexus
+            try {
+                artifact = artifactDownloader.download(artifact);
+            } catch (ArtifactDownloader.DownloadException e) {
+                log.error("Falha no download do artefato: {}", e.getMessage());
+                // Reportar erro sem tentar deploy
+                reportStatus(installedVersion, null);
+                return;
+            }
+
+            DeployResult result = deployPipeline.execute(artifact);
             reportStatus(driver.getInstalledVersion(), result);
 
         } catch (Exception e) {
@@ -83,13 +95,10 @@ public class AgentOrchestrator {
 
     private Artifact toArtifact(DesiredState desired) {
         return new Artifact(
-                desired.groupId(),
                 desired.artifactId(),
                 desired.version(),
-                desired.extension(),
-                desired.nexusBaseUrl(),
-                desired.nexusRepository(),
-                null
+                desired.warUrl(),
+                null  // localFile será preenchido por ArtifactDownloader
         );
     }
 }

@@ -1,11 +1,11 @@
 package br.com.wonder.agent.cli.command;
 
-import br.com.wonder.agent.core.deploy.DeployPipeline;
 import br.com.wonder.agent.core.poll.AgentOrchestrator;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.microprofile.config.ConfigProvider;
 import picocli.CommandLine.*;
 
 /**
@@ -75,19 +75,73 @@ public class WonderAgentCommand implements Runnable {
 
     @Command(name = "install", description = "Registra wonderagent como serviço Windows via NSSM")
     static class InstallCommand implements Runnable {
+
+        @Parameters(index = "0", description = "Caminho completo para o wonderagent.exe",
+                    defaultValue = "C:\\ProgramData\\WonderAgent\\wonderagent.exe")
+        String exePath;
+
+        @Option(names = "--nssm", description = "Caminho para nssm.exe", defaultValue = "nssm")
+        String nssmPath;
+
         @Override
         public void run() {
-            // TODO: invocar nssm install wonderagent <path-to-exe>
-            System.out.println("Instalando serviço Windows... (não implementado)");
+            try {
+                log.info("Instalando serviço Windows via NSSM: {}", exePath);
+                Process install = new ProcessBuilder(nssmPath, "install", "WonderAgent", exePath)
+                        .inheritIO()
+                        .start();
+                int rc = install.waitFor();
+                if (rc != 0) {
+                    System.err.println("NSSM retornou código " + rc + " — verifique permissões de administrador.");
+                    return;
+                }
+
+                // Configura diretório de trabalho e variáveis de ambiente
+                new ProcessBuilder(nssmPath, "set", "WonderAgent", "AppDirectory",
+                        "C:\\ProgramData\\WonderAgent").inheritIO().start().waitFor();
+                new ProcessBuilder(nssmPath, "set", "WonderAgent", "AppStdout",
+                        "C:\\ProgramData\\WonderAgent\\logs\\nssm-stdout.log").inheritIO().start().waitFor();
+                new ProcessBuilder(nssmPath, "set", "WonderAgent", "AppStderr",
+                        "C:\\ProgramData\\WonderAgent\\logs\\nssm-stderr.log").inheritIO().start().waitFor();
+                new ProcessBuilder(nssmPath, "set", "WonderAgent", "Start",
+                        "SERVICE_AUTO_START").inheritIO().start().waitFor();
+
+                System.out.println("Serviço WonderAgent instalado com sucesso.");
+                System.out.println("Para iniciar: sc start WonderAgent");
+            } catch (Exception e) {
+                System.err.println("Falha ao instalar serviço: " + e.getMessage());
+                log.error("Falha ao instalar serviço Windows", e);
+            }
         }
     }
 
     @Command(name = "uninstall", description = "Remove o serviço Windows")
     static class UninstallCommand implements Runnable {
+
+        @Option(names = "--nssm", description = "Caminho para nssm.exe", defaultValue = "nssm")
+        String nssmPath;
+
         @Override
         public void run() {
-            // TODO: invocar nssm remove wonderagent confirm
-            System.out.println("Removendo serviço Windows... (não implementado)");
+            try {
+                log.info("Removendo serviço Windows WonderAgent");
+
+                // Para o serviço antes de remover
+                new ProcessBuilder("sc", "stop", "WonderAgent").inheritIO().start().waitFor();
+
+                Process remove = new ProcessBuilder(nssmPath, "remove", "WonderAgent", "confirm")
+                        .inheritIO()
+                        .start();
+                int rc = remove.waitFor();
+                if (rc != 0) {
+                    System.err.println("NSSM retornou código " + rc + " — verifique permissões de administrador.");
+                    return;
+                }
+                System.out.println("Serviço WonderAgent removido com sucesso.");
+            } catch (Exception e) {
+                System.err.println("Falha ao remover serviço: " + e.getMessage());
+                log.error("Falha ao remover serviço Windows", e);
+            }
         }
     }
 
@@ -100,8 +154,29 @@ public class WonderAgentCommand implements Runnable {
         static class ShowCommand implements Runnable {
             @Override
             public void run() {
-                // TODO: imprimir application.yaml resolvido
-                System.out.println("Configuração ativa: (não implementado)");
+                String[] keys = {
+                    "agent.client-id",
+                    "agent.version",
+                    "agent.poll-interval-seconds",
+                    "agent.central-url",
+                    "driver.type",
+                    "driver.wildfly.home",
+                    "driver.wildfly.management-port",
+                    "driver.wildfly.deploy-path",
+                    "driver.wildfly.artifact-name",
+                    "driver.wildfly.health-check-url",
+                    "nexus.username",
+                    "download.temp-dir",
+                    "download.max-retries",
+                };
+                System.out.println("=== Configuração ativa ===");
+                var config = ConfigProvider.getConfig();
+                for (String key : keys) {
+                    String value = config.getOptionalValue(key, String.class)
+                            .map(v -> key.contains("password") || key.contains("token") ? "***" : v)
+                            .orElse("(não definido)");
+                    System.out.printf("  %-45s %s%n", key, value);
+                }
             }
         }
     }

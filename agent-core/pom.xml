@@ -20,6 +20,10 @@
       <artifactId>agent-model</artifactId>
     </dependency>
     <dependency>
+      <groupId>br.com.wonder</groupId>
+      <artifactId>agent-central-client</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-arc</artifactId>
     </dependency>
@@ -30,6 +34,10 @@
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-config-yaml</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.takari.zsync</groupId>
+      <artifactId>zsync-core</artifactId>
     </dependency>
     <dependency>
       <groupId>org.projectlombok</groupId>

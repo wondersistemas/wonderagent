@@ -6,6 +6,7 @@ import br.com.wonder.agent.model.deploy.HealthStatus;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -25,6 +26,7 @@ import java.time.Instant;
  * Ver docs/drivers/wildfly-driver.md para detalhes de cada operação.
  */
 @Slf4j
+@Named("wildfly")
 @ApplicationScoped
 public class WildflyDriver implements RuntimeDriver {
 
@@ -161,7 +163,7 @@ public class WildflyDriver implements RuntimeDriver {
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(5000);
             int code = conn.getResponseCode();
-            if (code == 200) return HealthStatus.healthy();
+            if (code == 200) return HealthStatus.ok();
             return HealthStatus.unhealthy("HTTP " + code);
         } catch (Exception e) {
             return HealthStatus.unhealthy("Health check falhou: " + e.getMessage());
@@ -170,7 +172,7 @@ public class WildflyDriver implements RuntimeDriver {
 
     // ── Métodos privados ──────────────────────────────────────────────────────
 
-    private boolean isProcessAlive() {
+    protected boolean isProcessAlive() {
         try {
             Process p = new ProcessBuilder("tasklist", "/FI", "IMAGENAME eq java.exe")
                     .start();

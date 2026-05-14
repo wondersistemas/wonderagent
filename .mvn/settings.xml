@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Settings Maven local ao projeto wonderagent.
+  Sobrepõe o settings.xml global para evitar redirecionar ao Archiva interno
+  artefatos que não estão no cache dele (ex: io.vertx:vertx-ext-parent).
+
+  Uso: mvn -s .mvn/settings.xml <goals>
+  O Archiva continua sendo usado como mirror para *,!central — mas agora
+  o Maven Central é declarado explicitamente como fallback.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              http://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <mirrors>
+    <mirror>
+      <id>maven-default-http-blocker</id>
+      <url>http://127.0.0.1/dont-go-here</url>
+      <mirrorOf>dummy</mirrorOf>
+    </mirror>
+    <mirror>
+      <id>archiva</id>
+      <url>http://192.168.0.81:7070/repository/internal</url>
+      <mirrorOf>!central,!wonder-releases,external:*</mirrorOf>
+    </mirror>
+  </mirrors>
+
+  <profiles>
+    <profile>
+      <id>wonder</id>
+      <properties>
+        <wonder.certificado>/home/administrador/bin/Certificado_Wonder_Comodo_2014.pfx</wonder.certificado>
+        <wonder.senha2020>wond&amp;r96</wonder.senha2020>
+        <wonder.senhaA3>TurboWonder@96</wonder.senhaA3>
+      </properties>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>wonder</activeProfile>
+  </activeProfiles>
+
+  <servers>
+    <server>
+      <id>wonder-releases</id>
+      <username>solerman</username>
+      <password>Shopping123</password>
+    </server>
+    <server>
+      <id>archiva.snapshots</id>
+      <username>solerman</username>
+      <password>Shopping123</password>
+    </server>
+  </servers>
+</settings>

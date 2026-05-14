@@ -7,7 +7,7 @@ public record HealthStatus(
     String details,
     Instant checkedAt
 ) {
-    public static HealthStatus healthy() {
+    public static HealthStatus ok() {
         return new HealthStatus(true, null, Instant.now());
     }
 

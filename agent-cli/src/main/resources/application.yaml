@@ -25,6 +25,7 @@ quarkus:
         max-backup-index: 5
 
 driver:
+  type: "wildfly"                   # tipo de driver: wildfly, quarkus, proxy
   wildfly:
     home: "C:/wildfly"
     management-port: 9990
@@ -33,3 +34,9 @@ driver:
     start-timeout-seconds: 180
     stop-timeout-seconds: 60
     health-check-url: "http://localhost:8080/probusweb/health"
+
+download:
+  temp-dir: "${java.io.tmpdir}/wonderagent-downloads"
+  connect-timeout-seconds: 30
+  read-timeout-seconds: 120
+  max-retries: 3
