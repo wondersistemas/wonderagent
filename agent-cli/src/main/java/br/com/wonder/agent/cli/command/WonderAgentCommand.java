@@ -3,6 +3,7 @@ package br.com.wonder.agent.cli.command;
 import br.com.wonder.agent.core.poll.AgentOrchestrator;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
+import io.quarkus.arc.Unremovable;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -44,7 +45,8 @@ public class WonderAgentCommand implements Runnable {
     }
 
     @ApplicationScoped
-    @Command(name = "status", description = "Mostra estado atual do runtime e versão instalada")
+    @Command(name = "status", mixinStandardHelpOptions = true,
+             description = "Mostra estado atual do runtime e versão instalada")
     static class StatusCommand implements Runnable {
         @Inject RuntimeDriver driver;
 
@@ -59,7 +61,8 @@ public class WonderAgentCommand implements Runnable {
     }
 
     @ApplicationScoped
-    @Command(name = "detect", description = "Detecta e imprime o estado do runtime sem agir")
+    @Command(name = "detect", mixinStandardHelpOptions = true,
+             description = "Detecta e imprime o estado do runtime sem agir")
     static class DetectCommand implements Runnable {
         @Inject RuntimeDriver driver;
 
@@ -70,7 +73,8 @@ public class WonderAgentCommand implements Runnable {
     }
 
     @ApplicationScoped
-    @Command(name = "check", description = "Executa um ciclo de poll único: verifica e aplica se necessário")
+    @Command(name = "check", mixinStandardHelpOptions = true,
+             description = "Executa um ciclo de poll único: verifica e aplica se necessário")
     static class CheckCommand implements Runnable {
         @Inject AgentOrchestrator orchestrator;
 
@@ -81,7 +85,8 @@ public class WonderAgentCommand implements Runnable {
     }
 
     @ApplicationScoped
-    @Command(name = "install", description = "Registra wonderagent como serviço Windows via NSSM")
+    @Command(name = "install", mixinStandardHelpOptions = true,
+             description = "Registra wonderagent como serviço Windows via NSSM")
     static class InstallCommand implements Runnable {
 
         @Parameters(index = "0", description = "Caminho completo para o wonderagent.exe",
@@ -124,7 +129,8 @@ public class WonderAgentCommand implements Runnable {
     }
 
     @ApplicationScoped
-    @Command(name = "uninstall", description = "Remove o serviço Windows")
+    @Command(name = "uninstall", mixinStandardHelpOptions = true,
+             description = "Remove o serviço Windows")
     static class UninstallCommand implements Runnable {
 
         @Option(names = "--nssm", description = "Caminho para nssm.exe", defaultValue = "nssm")
@@ -154,14 +160,19 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @Unremovable
     @ApplicationScoped
-    @Command(name = "config", description = "Operações de configuração",
+    @Command(name = "config", mixinStandardHelpOptions = true,
+             description = "Operações de configuração",
              subcommands = ConfigCommand.ShowCommand.class)
     static class ConfigCommand implements Runnable {
-        @Override public void run() { System.out.println("Use: config show"); }
+        @Spec Model.CommandSpec spec;
+
+        @Override public void run() { spec.commandLine().usage(System.out); }
 
         @ApplicationScoped
-        @Command(name = "show", description = "Exibe a configuração ativa")
+        @Command(name = "show", mixinStandardHelpOptions = true,
+                 description = "Exibe a configuração ativa")
         static class ShowCommand implements Runnable {
             @Override
             public void run() {

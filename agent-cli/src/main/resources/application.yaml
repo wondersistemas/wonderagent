@@ -11,6 +11,8 @@ agent:
     home: "${user.home}/.wonderagent-dev"
 
 quarkus:
+  banner:
+    enabled: false
   index-dependency:
     zsync:
       group-id: io.takari.zsync
@@ -22,10 +24,13 @@ quarkus:
         Authorization: "Bearer ${agent.jwt-token:}"
 
   log:
-    level: INFO
+    level: WARN
+    console:
+      enable: true
     file:
       enable: true
       path: "${agent.home}/logs/agent.log"
+      level: INFO
       rotation:
         max-file-size: 50M
         max-backup-index: 5
