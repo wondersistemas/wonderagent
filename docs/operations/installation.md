@@ -48,7 +48,14 @@ driver:
 **`C:\ProgramData\WonderAgent\.env`** — segredos (não versionar):
 
 ```env
+# Obrigatório
 WONDER_REPO_PASSWORD=senha-do-reposilite
+
+# Opcional — conexão Oracle local para leitura de id_versaodb.
+# Se omitido, dbVersion é enviado como null ao servidor central.
+DB_URL=jdbc:oracle:thin:@//localhost:1521/ORCL
+DB_USERNAME=usuario
+DB_PASSWORD=senha
 ```
 
 Ver [configuration.md](configuration.md) para referência completa.

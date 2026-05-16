@@ -40,6 +40,12 @@ Variáveis lidas pelo agente na inicialização. Localização:
 # Senha do usuário read-only do Reposilite (obrigatório)
 WONDER_REPO_PASSWORD=senha-aqui
 
+# Conexão Oracle para leitura de gerenciador.id_versaodb (opcional).
+# Se ausente, dbVersion é enviado como null ao servidor central.
+# DB_URL=jdbc:oracle:thin:@//localhost:1521/ORCL
+# DB_USERNAME=usuario
+# DB_PASSWORD=senha
+
 # Fixa uma versão específica do WildFly provisionado (opcional).
 # Se ausente, usa a versão enviada pelo servidor central.
 # WILDFLY_PROVISIONING_VERSION=1.0.0-SNAPSHOT
@@ -117,6 +123,22 @@ O ZIP é publicado no Reposilite como:
 
 Após extração, o WildFly é instalado diretamente em `driver.wildfly.home`.
 A versão instalada é rastreada em `driver.wildfly.home/.wildfly-version`.
+
+---
+
+## db.*
+
+Conexão Oracle local para leitura de `gerenciador.id_versaodb`.
+O valor é enviado ao servidor central no `AgentStatusReport` para que ele possa
+compor a versão correta do WAR no formato `1.<dbVersion>.<patch>`.
+
+Se `db.url` estiver vazio, a leitura é silenciosamente ignorada e `dbVersion` é `null` no report.
+
+| Propriedade | Obrigatório | Padrão | Descrição |
+|---|---|---|---|
+| `db.url` | Não | `` (vazio) | JDBC URL do Oracle local. Ex: `jdbc:oracle:thin:@//localhost:1521/ORCL`. Lido de `${DB_URL}` no `.env` |
+| `db.username` | Não | `` (vazio) | Usuário Oracle. Lido de `${DB_USERNAME}` no `.env` |
+| `db.password` | Não | `` (vazio) | Senha Oracle. Lido de `${DB_PASSWORD}` no `.env` |
 
 ---
 

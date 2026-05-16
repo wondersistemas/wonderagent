@@ -3,5 +3,18 @@
     "allow": [
       "Bash(java -jar agent-cli/target/quarkus-app/quarkus-run.jar config --help)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; echo \"$f\" | grep -qv -E '(/docs/|/CLAUDE\\.md$)' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"LEMBRETE: arquivo de código alterado. Verifique se docs/ e CLAUDE.md precisam ser atualizados para refletir esta mudança.\"}}' || true; } 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
   }
 }

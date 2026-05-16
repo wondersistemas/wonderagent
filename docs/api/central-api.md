@@ -33,7 +33,7 @@ Retorna o estado desejado para esta instalação.
 | Campo | Tipo | Descrição |
 |---|---|---|
 | `artifactId` | string | Identificador Maven do artefato WAR |
-| `version` | string | Versão desejada do WAR |
+| `version` | string | Versão desejada do WAR. Para o branch `wildfly`, segue o formato `1.<dbVersion>.<patch>` onde `dbVersion` vem do `AgentStatusReport.dbVersion` enviado pelo agente |
 | `warUrl` | string | URL completa do WAR no Reposilite |
 | `runtimeType` | string | Tipo de driver a usar (`wildfly`, `quarkus`) |
 | `wildflyVersion` | string\|null | Versão desejada do WildFly provisionado. `null` = servidor central não gerencia o WildFly desta instalação |
@@ -58,9 +58,23 @@ Relatório de estado enviado pelo agente a cada ciclo de poll.
   "healthy": true,
   "lastDeployAt": "2026-04-23T14:22:00Z",
   "lastDeployResult": "SUCCESS",
-  "agentVersion": "1.0.0"
+  "agentVersion": "1.0.0",
+  "dbVersion": "42"
 }
 ```
+
+**Campos:**
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `reportedAt` | string (ISO 8601) | Instante do relatório |
+| `runtimeState` | string | Estado atual do runtime (`RUNNING`, `STOPPED`, etc.) |
+| `installedVersion` | string | Versão do WAR instalada |
+| `healthy` | boolean | Resultado do último health check |
+| `lastDeployAt` | string\|null | Instante do último deploy |
+| `lastDeployResult` | string\|null | `"SUCCESS"`, `"FAILURE"` ou `null` se nunca deployou |
+| `agentVersion` | string | Versão do próprio agente |
+| `dbVersion` | string\|null | Valor de `gerenciador.id_versaodb` lido do Oracle local. `null` se banco não configurado. O servidor central usa este valor para compor a versão correta do WAR no formato `1.<dbVersion>.<patch>` |
 
 **Resposta:** `204 No Content`
 

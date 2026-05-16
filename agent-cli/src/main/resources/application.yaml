@@ -46,6 +46,17 @@ driver:
     stop-timeout-seconds: 60
     health-check-url: "http://localhost:8080/probusweb/health"
 
+db:
+  # Conexão Oracle para leitura de gerenciador.id_versaodb.
+  # Se url estiver vazio, a leitura de versão de banco é ignorada.
+  # Configurar em C:\ProgramData\WonderAgent\.env:
+  #   DB_URL=jdbc:oracle:thin:@//localhost:1521/ORCL
+  #   DB_USERNAME=usuario
+  #   DB_PASSWORD=senha
+  url: "${DB_URL:}"
+  username: "${DB_USERNAME:}"
+  password: "${DB_PASSWORD:}"
+
 download:
   temp-dir: "${agent.home}/downloads"
   connect-timeout-seconds: 30

@@ -37,6 +37,7 @@ atualizações de forma autônoma.
 │  ┌──────────────────────────────────────────────┐       │
 │  │  AgentOrchestrator (poll loop)               │       │
 │  │  ├── CentralClient (fetchDesiredState)       │       │
+│  │  ├── DatabaseVersionReader (id_versaodb)     │       │
 │  │  ├── WildflyProvisioner (ensureVersion)      │       │
 │  │  ├── StateMachine (detectAndRecover)         │       │
 │  │  ├── DeployPipeline (stop→swap→start→health) │       │
@@ -62,6 +63,11 @@ atualizações de forma autônoma.
    c. DeployPipeline.execute(artifact)
       - stop() → deploy() → start() → healthCheck()
    d. reportStatus() + reportDeployResult()
+
+Em todo ciclo, reportStatus() inclui dbVersion:
+   DatabaseVersionReader.readDbVersion() → lê gerenciador.id_versaodb via JDBC
+   → enviado no AgentStatusReport para que o servidor central componha a versão
+     do WAR no formato 1.<dbVersion>.<patch>
 ```
 
 ## Extensibilidade

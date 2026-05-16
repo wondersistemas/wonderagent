@@ -1,6 +1,7 @@
 package br.com.wonder.agent.core.poll;
 
 import br.com.wonder.agent.central.CentralClient;
+import br.com.wonder.agent.core.db.DatabaseVersionReader;
 import br.com.wonder.agent.core.deploy.DeployPipeline;
 import br.com.wonder.agent.core.download.ArtifactDownloader;
 import br.com.wonder.agent.core.provision.WildflyProvisioner;
@@ -34,6 +35,7 @@ public class AgentOrchestrator {
     @Inject RuntimeDriver driver;
     @Inject ArtifactDownloader artifactDownloader;
     @Inject WildflyProvisioner wildflyProvisioner;
+    @Inject DatabaseVersionReader databaseVersionReader;
 
     @ConfigProperty(name = "agent.client-id")
     String clientId;
@@ -88,6 +90,7 @@ public class AgentOrchestrator {
     private void reportStatus(String installedVersion, DeployResult lastResult) {
         RuntimeState state = driver.detectState();
         boolean healthy = driver.healthCheck().healthy();
+        String dbVersion = databaseVersionReader.readDbVersion().orElse(null);
 
         AgentStatusReport report = new AgentStatusReport(
                 Instant.now(),
@@ -96,7 +99,8 @@ public class AgentOrchestrator {
                 healthy,
                 lastResult != null ? lastResult.deployedAt() : null,
                 lastResult != null ? (lastResult.success() ? "SUCCESS" : "FAILURE") : null,
-                agentVersion
+                agentVersion,
+                dbVersion
         );
 
         centralClient.reportStatus(clientId, report);

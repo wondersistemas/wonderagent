@@ -15,5 +15,6 @@ public record AgentStatusReport(
     boolean healthy,
     Instant lastDeployAt,
     String lastDeployResult,    // "SUCCESS", "FAILURE", null se nunca deployou
-    String agentVersion
+    String agentVersion,
+    String dbVersion            // id_versaodb de gerenciador; null se banco não configurado
 ) {}

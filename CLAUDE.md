@@ -53,6 +53,9 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - `application.yaml` com todas as propriedades documentadas
 - Profile `native` no `agent-cli/pom.xml` para build do `.exe`
 - `ArtifactDownloader` com download via zsync (delta transfer) de S3 público
+- `DatabaseVersionReader` com leitura de `gerenciador.id_versaodb` via JDBC Oracle (ojdbc17); retorna `Optional.empty()` sem exceção se banco não configurado
+- `AgentStatusReport` inclui campo `dbVersion` — enviado ao servidor central para que ele componha a versão do WAR no formato `1.<dbVersion>.<patch>` (branch `wildfly`)
+- Conexão Oracle configurável via `.env`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`
 - `DriverProducer` com seleção de driver via CDI `Instance<RuntimeDriver>` + `@Named`
 - Comandos `install` e `uninstall` do NSSM implementados
 - Comando `config show` implementado via `ConfigProvider`
