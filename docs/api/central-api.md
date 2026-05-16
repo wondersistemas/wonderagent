@@ -12,13 +12,11 @@ Retorna o estado desejado para esta instalação.
 **Resposta 200:**
 ```json
 {
-  "groupId": "br.com.wonder",
   "artifactId": "wnfe-war",
   "version": "2.45.1",
-  "extension": "war",
-  "nexusBaseUrl": "https://nexus.wonder.com.br",
-  "nexusRepository": "releases",
+  "warUrl": "http://192.168.0.86:8082/wnfe-releases/br/com/wonder/wnfe-war/2.45.1/wnfe-war-2.45.1.war",
   "runtimeType": "wildfly",
+  "wildflyVersion": "1.0.0",
   "deployConfig": {
     "deployPath": "C:/wildfly/standalone/deployments",
     "healthCheckUrl": "http://localhost:8080/probusweb/health",
@@ -29,6 +27,17 @@ Retorna o estado desejado para esta instalação.
   }
 }
 ```
+
+**Campos:**
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `artifactId` | string | Identificador Maven do artefato WAR |
+| `version` | string | Versão desejada do WAR |
+| `warUrl` | string | URL completa do WAR no Reposilite |
+| `runtimeType` | string | Tipo de driver a usar (`wildfly`, `quarkus`) |
+| `wildflyVersion` | string\|null | Versão desejada do WildFly provisionado. `null` = servidor central não gerencia o WildFly desta instalação |
+| `deployConfig` | object | Parâmetros de deploy e health check |
 
 **Erros:**
 - `404`: clientId não cadastrado
@@ -79,15 +88,26 @@ Detalhe de uma tentativa de deploy. Enviado apenas quando o resultado muda
 
 ---
 
-## Download de artefato
+## Download de artefatos
 
-O agente baixa diretamente do Nexus — não passa pelo servidor central.
+O agente baixa diretamente do Reposilite — não passa pelo servidor central.
+Usa zsync para delta-transfer (baixa apenas o diff em relação ao arquivo local existente).
 
+**WAR do wnfe:**
 ```
-GET https://{nexusBaseUrl}/repository/{nexusRepository}/{groupId}/{artifactId}/{version}/{artifactId}-{version}.{extension}
+GET {warUrl}                      # campo do desired-state
+GET {warUrl}.zsync                # arquivo de controle zsync
 ```
 
-Autenticação: credenciais Nexus configuradas separadamente em `nexus.username` / `nexus.password`.
+**WildFly provisionado** (quando `wildflyVersion != null`):
+```
+GET {download.repository.url}/{wildfly.provisioning.repo-path}/br/com/wonder/
+    wildfly-provisioning/{version}/wildfly-provisioning-{version}-dist.zip
+GET {mesmo-path}.zsync
+```
+
+Autenticação: `download.repository.username` / `download.repository.password` (configurados via `.env`).
+Arquivo de controle zsync deve estar publicado junto ao artefato principal no Reposilite.
 
 ---
 

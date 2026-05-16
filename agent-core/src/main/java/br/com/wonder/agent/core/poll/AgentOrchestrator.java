@@ -3,6 +3,7 @@ package br.com.wonder.agent.core.poll;
 import br.com.wonder.agent.central.CentralClient;
 import br.com.wonder.agent.core.deploy.DeployPipeline;
 import br.com.wonder.agent.core.download.ArtifactDownloader;
+import br.com.wonder.agent.core.provision.WildflyProvisioner;
 import br.com.wonder.agent.model.config.AgentStatusReport;
 import br.com.wonder.agent.model.config.DesiredState;
 import br.com.wonder.agent.model.deploy.Artifact;
@@ -32,6 +33,7 @@ public class AgentOrchestrator {
     @Inject DeployPipeline deployPipeline;
     @Inject RuntimeDriver driver;
     @Inject ArtifactDownloader artifactDownloader;
+    @Inject WildflyProvisioner wildflyProvisioner;
 
     @ConfigProperty(name = "agent.client-id")
     String clientId;
@@ -44,6 +46,16 @@ public class AgentOrchestrator {
         log.debug("Iniciando ciclo de poll — clientId={}", clientId);
         try {
             DesiredState desired = centralClient.fetchDesiredState(clientId);
+
+            if (desired.wildflyVersion() != null) {
+                try {
+                    wildflyProvisioner.ensureVersion(desired.wildflyVersion());
+                } catch (WildflyProvisioner.ProvisioningException e) {
+                    log.error("Falha ao provisionar WildFly {}: {}", desired.wildflyVersion(), e.getMessage());
+                    // Não interrompe o ciclo — tenta deploy do WAR mesmo assim
+                }
+            }
+
             String installedVersion = driver.getInstalledVersion();
 
             if (desired.version().equals(installedVersion)) {

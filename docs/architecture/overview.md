@@ -23,11 +23,11 @@ atualizações de forma autônoma.
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Servidor Central (Wonder)                              │
-│  ┌──────────────┐  ┌───────────────────────────────┐   │
-│  │  REST API    │  │  Nexus (artefatos Maven)       │   │
-│  │  /desired-   │  │  wnfe-war-2.x.war              │   │
-│  │   state      │  └───────────────────────────────┘   │
-│  └──────┬───────┘                                       │
+│  ┌──────────────┐  ┌───────────────────────────────┐    │
+│  │  REST API    │  │  Reposilite                   │    │
+│  │  /desired-   │  │  wnfe-war-2.x.war             │    │
+│  │   state      │  │  wildfly-provisioning-x-dist  │    │
+│  └──────┬───────┘  └───────────────────────────────┘    │
 └─────────┼───────────────────────────────────────────────┘
           │ HTTPS (saída do cliente)
 ┌─────────▼───────────────────────────────────────────────┐
@@ -36,10 +36,11 @@ atualizações de forma autônoma.
 │  wonderagent.exe (serviço Windows)                      │
 │  ┌──────────────────────────────────────────────┐       │
 │  │  AgentOrchestrator (poll loop)               │       │
-│  │  ├── CentralClient (fetchDesiredState)        │       │
-│  │  ├── StateMachine (detectAndRecover)          │       │
-│  │  ├── DeployPipeline (stop→swap→start→health)  │       │
-│  │  └── RuntimeDriver (WildflyDriver)            │       │
+│  │  ├── CentralClient (fetchDesiredState)       │       │
+│  │  ├── WildflyProvisioner (ensureVersion)      │       │
+│  │  ├── StateMachine (detectAndRecover)         │       │
+│  │  ├── DeployPipeline (stop→swap→start→health) │       │
+│  │  └── RuntimeDriver (WildflyDriver)           │       │
 │  └──────────────────────────────────────────────┘       │
 │                                                         │
 │  WildFly 36 + wnfe.war + Oracle                         │
@@ -51,11 +52,13 @@ atualizações de forma autônoma.
 ```
 1. AgentOrchestrator.poll() dispara (a cada N segundos)
 2. CentralClient.fetchDesiredState(clientId) → versão desejada
-3. RuntimeDriver.getInstalledVersion() → versão instalada
-4. Se versões iguais: reportStatus() e encerra ciclo
-5. Se versão diferente:
+3. Se desired.wildflyVersion != null:
+   WildflyProvisioner.ensureVersion() → baixa e extrai WildFly se versão mudou
+4. RuntimeDriver.getInstalledVersion() → versão do WAR instalado
+5. Se versões iguais: reportStatus() e encerra ciclo
+6. Se versão diferente:
    a. StateMachine.detectAndRecover() → estado confiável
-   b. Download do artefato do Nexus
+   b. ArtifactDownloader.download() → WAR via zsync do Reposilite
    c. DeployPipeline.execute(artifact)
       - stop() → deploy() → start() → healthCheck()
    d. reportStatus() + reportDeployResult()

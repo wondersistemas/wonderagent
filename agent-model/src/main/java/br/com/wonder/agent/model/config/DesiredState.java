@@ -7,8 +7,9 @@ package br.com.wonder.agent.model.config;
 public record DesiredState(
     String artifactId,
     String version,
-    String warUrl,          // URL completa do WAR no S3
+    String warUrl,          // URL completa do WAR no Reposilite
     String runtimeType,
+    String wildflyVersion,  // null = não gerenciar WildFly; não-null = versão desejada
     DeployConfig deployConfig
 ) {
     public record DeployConfig(

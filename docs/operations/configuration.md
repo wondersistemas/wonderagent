@@ -12,17 +12,38 @@ Tudo deriva de `agent.home`. A estrutura padrão após instalação:
 C:\ProgramData\WonderAgent\          ← agent.home
   wonderagent.exe
   application.yaml
+  .env                               ← variáveis de ambiente (senhas, versão fixada)
   logs\
     agent.log                        ← quarkus.log.file.path
   downloads\                         ← download.temp-dir
+    wnfe-war-2.x.war                 ← cache para delta zsync
+    wildfly-provisioning-x-dist.zip  ← cache para delta zsync do WildFly
   wildfly\                           ← driver.wildfly.home
+    .wildfly-version                 ← versão do WildFly instalado
     bin\
     standalone\
       deployments\                   ← driver.wildfly.deploy-path
+        .wonder-version              ← versão do WAR instalado
 ```
 
 Para instalar o WildFly em outro lugar, basta sobrescrever `driver.wildfly.home`
 no `application.yaml` — os demais caminhos que derivam dele se ajustam automaticamente.
+
+---
+
+## .env — segredos e substituições de ambiente
+
+Variáveis lidas pelo agente na inicialização. Localização:
+`C:\ProgramData\WonderAgent\.env`
+
+```env
+# Senha do usuário read-only do Reposilite (obrigatório)
+WONDER_REPO_PASSWORD=senha-aqui
+
+# Fixa uma versão específica do WildFly provisionado (opcional).
+# Se ausente, usa a versão enviada pelo servidor central.
+# WILDFLY_PROVISIONING_VERSION=1.0.0-SNAPSHOT
+```
 
 ---
 
@@ -69,8 +90,33 @@ no `application.yaml` — os demais caminhos que derivam dele se ajustam automat
 
 | Propriedade | Padrão | Descrição |
 |---|---|---|
-| `download.temp-dir` | `{agent.home}/downloads` | Diretório para WARs baixados |
+| `download.temp-dir` | `{agent.home}/downloads` | Diretório para arquivos baixados (WAR e ZIP do WildFly) |
 | `download.max-retries` | `3` | Tentativas em caso de falha |
+| `download.connect-timeout-seconds` | `30` | Timeout de conexão |
+| `download.read-timeout-seconds` | `120` | Timeout de leitura |
+| `download.repository.url` | `http://192.168.0.86:8082` | URL base do Reposilite |
+| `download.repository.username` | `reader` | Usuário read-only |
+| `download.repository.password` | `${WONDER_REPO_PASSWORD}` | Senha (lida do `.env`) |
+
+---
+
+## wildfly.provisioning.*
+
+Controla o download e instalação automática do WildFly provisionado.
+Só é ativado quando o servidor central envia `wildflyVersion != null` no desired-state.
+
+| Propriedade | Padrão | Descrição |
+|---|---|---|
+| `wildfly.provisioning.repo-path` | `wnfe-releases` | Repositório no Reposilite |
+| `wildfly.provisioning.fixed-version` | `` (vazio) | Fixa uma versão específica. Se vazio, usa a versão do servidor central. Configurável via `WILDFLY_PROVISIONING_VERSION` no `.env` |
+
+O ZIP é publicado no Reposilite como:
+```
+{repo-path}/br/com/wonder/wildfly-provisioning/{version}/wildfly-provisioning-{version}-dist.zip
+```
+
+Após extração, o WildFly é instalado diretamente em `driver.wildfly.home`.
+A versão instalada é rastreada em `driver.wildfly.home/.wildfly-version`.
 
 ---
 

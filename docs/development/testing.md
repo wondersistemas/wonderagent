@@ -31,6 +31,7 @@ Testes com `@ExtendWith(MockitoExtension.class)` e `@InjectMocks`.
 | `DeployPipelineTest` | Fluxo completo: parar/não-parar, forceKill fallback, falhas em cada etapa |
 | `AgentOrchestratorTest` | Versão já instalada, atualização, falha de download, falha de deploy, report de status |
 | `ArtifactDownloaderTest` | Construção da URL zsync, reutilização de arquivo existente como input, wrapping de `ZsyncException` |
+| `WildflyProvisionerTest` | Construção da URL do ZIP, versão já instalada (skip), versão fixada via `fixedVersion`, download via zsync, extração do ZIP com strip do primeiro componente, falha de download |
 
 `@ConfigProperty` é injetado via reflexão nos testes do `AgentOrchestrator`:
 ```java
@@ -90,8 +91,9 @@ while (clazz != null) {
 ```
 
 ### Zsync mockável via construtor
-`ArtifactDownloader` tem construtor que aceita `Zsync` para injeção de mock:
+`ArtifactDownloader` e `WildflyProvisioner` têm construtor package-private que aceita `Zsync` para injeção de mock:
 ```java
 Zsync zsync = mock(Zsync.class);
 ArtifactDownloader downloader = new ArtifactDownloader(zsync);
+WildflyProvisioner provisioner = new WildflyProvisioner(zsync);
 ```

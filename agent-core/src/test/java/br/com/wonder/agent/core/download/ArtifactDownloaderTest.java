@@ -3,6 +3,7 @@ package br.com.wonder.agent.core.download;
 import br.com.wonder.agent.model.deploy.Artifact;
 import com.salesforce.zsync.Zsync;
 import com.salesforce.zsync.ZsyncException;
+import com.salesforce.zsync.http.Credentials;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -21,26 +22,30 @@ class ArtifactDownloaderTest {
 
     @TempDir Path tempDir;
 
-    ArtifactDownloader downloader;
     Zsync zsync;
+    ArtifactDownloader downloader;
 
     static final String WAR_URL =
-            "https://wonderpublic.s3.sa-east-1.amazonaws.com/pacotes/5/wnfe-war-2.5.0.war";
+            "http://192.168.0.86:8082/wnfe-releases/br/com/wonder/wnfe-war/2.999/wnfe-war-2.999.war";
+    static final String ZSYNC_URL =
+            "http://192.168.0.86:8082/wnfe-releases/br/com/wonder/wnfe-war/2.999/wnfe-war-2.999.zsync";
 
     @BeforeEach
     void setUp() throws Exception {
         zsync = mock(Zsync.class);
         downloader = new ArtifactDownloader(zsync);
         setField(downloader, "tempDir", tempDir.toString());
+        setField(downloader, "username", "reader");
+        setField(downloader, "password", "secret");
     }
 
     Artifact artifact() {
-        return new Artifact("wnfe", "2.5.0", WAR_URL, null);
+        return new Artifact("wnfe-war", "2.999", WAR_URL, null);
     }
 
     @Test
-    void download_usaUrlZsyncComSufixo() throws Exception {
-        Path downloaded = tempDir.resolve("wnfe-war-2.5.0.war");
+    void download_usaUrlZsyncSubstituindoExtensao() throws Exception {
+        Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
         Files.createFile(downloaded);
         when(zsync.zsync(any(), any())).thenReturn(downloaded);
 
@@ -48,16 +53,29 @@ class ArtifactDownloaderTest {
 
         ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
         verify(zsync).zsync(uriCaptor.capture(), any());
-        assertThat(uriCaptor.getValue().toString()).isEqualTo(WAR_URL + ".zsync");
+        assertThat(uriCaptor.getValue().toString()).isEqualTo(ZSYNC_URL);
+    }
+
+    @Test
+    void download_passaCredenciaisParaOHost() throws Exception {
+        Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
+        Files.createFile(downloaded);
+        when(zsync.zsync(any(), any())).thenReturn(downloaded);
+
+        downloader.download(artifact());
+
+        ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
+        verify(zsync).zsync(any(), optCaptor.capture());
+        Credentials creds = optCaptor.getValue().getCredentials().get("192.168.0.86");
+        assertThat(creds).isNotNull();
+        assertThat(creds.basic()).contains("reader");
     }
 
     @Test
     void download_quandoArquivoExistente_adicionaComoInputFile() throws Exception {
-        Path existing = tempDir.resolve("wnfe-war-2.5.0.war");
+        Path existing = tempDir.resolve("wnfe-war-2.999.war");
         Files.writeString(existing, "previous-war-content");
-
-        Path downloaded = existing;
-        when(zsync.zsync(any(), any())).thenReturn(downloaded);
+        when(zsync.zsync(any(), any())).thenReturn(existing);
 
         downloader.download(artifact());
 
@@ -68,8 +86,7 @@ class ArtifactDownloaderTest {
 
     @Test
     void download_quandoSemArquivoExistente_naoAdicionaInputFile() throws Exception {
-        Path downloaded = tempDir.resolve("wnfe-war-2.5.0.war");
-        // arquivo ainda não existe — zsync vai criá-lo
+        Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
         when(zsync.zsync(any(), any())).thenReturn(downloaded);
 
         downloader.download(artifact());
@@ -81,7 +98,7 @@ class ArtifactDownloaderTest {
 
     @Test
     void download_retornaArtifactComLocalFilePreenchido() throws Exception {
-        Path downloaded = tempDir.resolve("wnfe-war-2.5.0.war");
+        Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
         Files.createFile(downloaded);
         when(zsync.zsync(any(), any())).thenReturn(downloaded);
 
@@ -95,11 +112,11 @@ class ArtifactDownloaderTest {
 
     @Test
     void download_quandoZsyncFalha_lancaDownloadException() throws Exception {
-        when(zsync.zsync(any(), any())).thenThrow(new ZsyncException("S3 inacessível"));
+        when(zsync.zsync(any(), any())).thenThrow(new ZsyncException("repositório inacessível"));
 
         assertThatThrownBy(() -> downloader.download(artifact()))
                 .isInstanceOf(ArtifactDownloader.DownloadException.class)
-                .hasMessageContaining("wnfe:2.5.0");
+                .hasMessageContaining("wnfe-war:2.999");
     }
 
     private void setField(Object target, String fieldName, Object value) throws Exception {

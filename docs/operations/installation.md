@@ -3,9 +3,13 @@
 ## Pré-requisitos
 
 - Windows Server 64-bit
-- WildFly 36 instalado e configurado
-- Acesso HTTPS de saída para o servidor central Wonder
+- Acesso HTTPS de saída para o servidor central Wonder (porta 443)
+- Acesso HTTP ao Reposilite interno (porta 8082) para download de artefatos
 - Permissão de Administrador para instalar serviço Windows
+
+> **WildFly**: não precisa ser instalado manualmente. Se o servidor central configurar
+> `wildflyVersion` no desired-state, o agente baixa e instala o WildFly provisionado
+> automaticamente no primeiro ciclo de poll.
 
 ## Passo a passo
 
@@ -24,21 +28,27 @@ C:\ProgramData\WonderAgent\
 └── application.yaml      ← criar conforme passo 3
 ```
 
-### 3. Configurar application.yaml
+### 3. Configurar application.yaml e .env
+
+**`C:\ProgramData\WonderAgent\application.yaml`** — configuração principal:
 
 ```yaml
 agent:
   client-id: "cliente-abc-prod-01"    # recebido no passo 1
   central-url: "https://deploy.wonder.com.br"
   jwt-token: "eyJ..."                 # recebido no passo 1
-  poll-interval-seconds: 300
+  poll-interval: "PT300S"             # ISO 8601: PT30S=30s, PT5M=5min, PT300S=5min
 
 driver:
   wildfly:
-    home: "C:/wildfly"
-    deploy-path: "C:/wildfly/standalone/deployments"
     artifact-name: "wnfe.war"
     health-check-url: "http://localhost:8080/probusweb/health"
+```
+
+**`C:\ProgramData\WonderAgent\.env`** — segredos (não versionar):
+
+```env
+WONDER_REPO_PASSWORD=senha-do-reposilite
 ```
 
 Ver [configuration.md](configuration.md) para referência completa.
