@@ -64,7 +64,8 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - Índice Jandex gerado em `agent-model` via `jandex-maven-plugin` 3.1.7
 - `@TopCommand` + `@ApplicationScoped` em todos os subcomandos Picocli
 - `@RestClient` no injection point `AgentOrchestrator#centralClient`
-- `@Typed(WildflyDriver.class)` para evitar ambiguidade CDI com o producer
+- `@Typed(WildflyDriver.class)` em `WildflyDriver` evita ambiguidade CDI; por isso `DriverProducer` injeta `Instance<WildflyDriver>` (tipo concreto) em vez de `Instance<RuntimeDriver>`
+- Propriedades opcionais que podem ser string vazia usam `Optional<String>` — SmallRye Config rejeita `String` com valor `""` (ex: `db.url`, `download.repository.password`)
 - `agent.poll-interval` como ISO 8601 duration (ex: `PT300S`) — `@Scheduled` não aceita concatenação de placeholder
 - Build Native Image validado no Linux: `mvn clean package -Pnative` → binário Linux funcional em ~45s
 

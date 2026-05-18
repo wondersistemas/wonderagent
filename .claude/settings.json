@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(java -jar agent-cli/target/quarkus-app/quarkus-run.jar config --help)"
+      "Bash(java -jar agent-cli/target/quarkus-app/quarkus-run.jar config --help)",
+      "Bash(mvn clean *)",
+      "Bash(\"/c/Users/155 X-MX/.sdkman/candidates/java/25.0.3-graal/bin/java\" -jar \"c:/Projetos/wonderagent/agent-cli/target/quarkus-app/quarkus-run.jar\" --help)",
+      "Bash(mvn test *)"
     ]
   },
   "hooks": {

@@ -12,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,7 +37,7 @@ class ArtifactDownloaderTest {
         downloader = new ArtifactDownloader(zsync);
         setField(downloader, "tempDir", tempDir.toString());
         setField(downloader, "username", "reader");
-        setField(downloader, "password", "secret");
+        setField(downloader, "password", Optional.of("secret"));
     }
 
     Artifact artifact() {

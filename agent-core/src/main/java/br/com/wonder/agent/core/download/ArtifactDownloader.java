@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 @Slf4j
 @ApplicationScoped
@@ -24,7 +25,7 @@ public class ArtifactDownloader {
     String username;
 
     @ConfigProperty(name = "download.repository.password")
-    String password;
+    Optional<String> password;
 
     private final Zsync zsync;
 
@@ -51,7 +52,7 @@ public class ArtifactDownloader {
 
         Zsync.Options options = new Zsync.Options()
                 .setOutputFile(outDir.resolve(filename(artifact.warUrl())))
-                .putCredentials(host, new Credentials(username, password));
+                .putCredentials(host, new Credentials(username, password.orElse("")));
 
         Path outputFile = outDir.resolve(filename(artifact.warUrl()));
         if (Files.exists(outputFile)) {

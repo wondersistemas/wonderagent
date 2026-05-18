@@ -39,7 +39,7 @@ class WildflyProvisionerTest {
         setField(provisioner, "repositoryUrl", REPO_URL);
         setField(provisioner, "repoPath", REPO_PATH);
         setField(provisioner, "username", "reader");
-        setField(provisioner, "password", "secret");
+        setField(provisioner, "password", Optional.of("secret"));
         setField(provisioner, "tempDir", tempDir.toString());
         setField(provisioner, "wildflyHome", wildflyHome.toString());
         setField(provisioner, "fixedVersion", Optional.empty());

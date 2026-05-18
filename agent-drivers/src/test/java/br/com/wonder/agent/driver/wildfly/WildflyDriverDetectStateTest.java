@@ -34,6 +34,14 @@ class WildflyDriverDetectStateTest {
         }
     }
 
+    /** Subclasse de teste que simula processo ausente sem chamar tasklist.exe. */
+    static class StoppedWildflyDriver extends WildflyDriver {
+        @Override
+        protected boolean isProcessAlive() {
+            return false;
+        }
+    }
+
     @BeforeEach
     void setUp() throws Exception {
         managementServer = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
@@ -133,8 +141,7 @@ class WildflyDriverDetectStateTest {
 
     @Test
     void detectState_quandoProcessoNaoExiste_retornaStopped() throws Exception {
-        // Driver padrão sem override — isProcessAlive() retorna false no Linux
-        WildflyDriver driver = new WildflyDriver();
+        WildflyDriver driver = new StoppedWildflyDriver();
         setField(driver, "wildflyHome", tempDir.toString());
         setField(driver, "managementPort", managementPort);
         setField(driver, "deployPath", tempDir.toString());
@@ -144,7 +151,6 @@ class WildflyDriverDetectStateTest {
         setField(driver, "healthCheckUrl", "http://localhost:8080/probusweb/health");
 
         RuntimeState state = driver.detectState();
-        // Linux: tasklist não existe → isProcessAlive() retorna false → STOPPED
         assertThat(state).isEqualTo(RuntimeState.STOPPED);
     }
 

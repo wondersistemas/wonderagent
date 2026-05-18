@@ -67,7 +67,7 @@ download:
     username: "reader"                 # usuário read-only
     # senha lida de C:\ProgramData\WonderAgent\.env:
     #   WONDER_REPO_PASSWORD=senha-aqui
-    password: "${WONDER_REPO_PASSWORD}"
+    password: "${WONDER_REPO_PASSWORD:}"
 
 wildfly:
   provisioning:

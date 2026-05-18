@@ -41,7 +41,7 @@ public class WildflyProvisioner {
     String username;
 
     @ConfigProperty(name = "download.repository.password")
-    String password;
+    Optional<String> password;
 
     @ConfigProperty(name = "download.temp-dir")
     String tempDir;
@@ -126,7 +126,7 @@ public class WildflyProvisioner {
 
         Zsync.Options options = new Zsync.Options()
                 .setOutputFile(outFile)
-                .putCredentials(host, new Credentials(username, password));
+                .putCredentials(host, new Credentials(username, password.orElse("")));
 
         if (Files.exists(outFile)) {
             log.debug("ZIP existente encontrado, usando como base para delta: {}", outFile);

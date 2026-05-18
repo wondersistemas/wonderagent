@@ -19,14 +19,14 @@ import java.util.Optional;
 @ApplicationScoped
 public class DatabaseVersionReader {
 
-    @ConfigProperty(name = "db.url", defaultValue = "")
-    String url;
+    @ConfigProperty(name = "db.url")
+    Optional<String> url;
 
-    @ConfigProperty(name = "db.username", defaultValue = "")
-    String username;
+    @ConfigProperty(name = "db.username")
+    Optional<String> username;
 
-    @ConfigProperty(name = "db.password", defaultValue = "")
-    String password;
+    @ConfigProperty(name = "db.password")
+    Optional<String> password;
 
     private static final String QUERY = "SELECT id_versaodb FROM gerenciador WHERE ROWNUM = 1";
 
@@ -35,12 +35,16 @@ public class DatabaseVersionReader {
      * Nunca lança exceção — falha silenciosa com log de aviso.
      */
     public Optional<String> readDbVersion() {
-        if (url.isBlank()) {
+        String urlStr = url.filter(s -> !s.isBlank()).orElse(null);
+        if (urlStr == null) {
             log.debug("db.url não configurado — leitura de versão de banco ignorada");
             return Optional.empty();
         }
 
-        try (Connection conn = DriverManager.getConnection(url, username, password);
+        String usernameStr = username.orElse("");
+        String passwordStr = password.orElse("");
+
+        try (Connection conn = DriverManager.getConnection(urlStr, usernameStr, passwordStr);
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(QUERY)) {
 

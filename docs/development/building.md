@@ -58,7 +58,7 @@ Os arquivos de configuração ficam em:
 | `reflect-config.json` | Classes que precisam de reflection (records, enums, commands, drivers) |
 | `resource-config.json` | Recursos incluídos no binário (application.yaml, services/) |
 | `proxy-config.json` | Interface `CentralClient` para proxy dinâmico do REST Client |
-| `native-image.properties` | Flags: `--initialize-at-build-time`, `--initialize-at-run-time` |
+| `native-image.properties` | Flags: `--initialize-at-run-time` (zsync) |
 
 O Quarkus gerencia a maioria das configurações automaticamente via extensões.
 Estes arquivos cobrem o que as extensões não detectam estaticamente.
