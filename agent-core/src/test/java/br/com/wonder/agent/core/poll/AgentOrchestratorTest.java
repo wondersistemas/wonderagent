@@ -1,8 +1,10 @@
 package br.com.wonder.agent.core.poll;
 
 import br.com.wonder.agent.central.CentralClient;
+import br.com.wonder.agent.core.db.DatabaseVersionReader;
 import br.com.wonder.agent.core.deploy.DeployPipeline;
 import br.com.wonder.agent.core.download.ArtifactDownloader;
+import br.com.wonder.agent.core.provision.WildflyProvisioner;
 import br.com.wonder.agent.model.config.AgentStatusReport;
 import br.com.wonder.agent.model.config.DesiredState;
 import br.com.wonder.agent.model.deploy.Artifact;
@@ -33,6 +35,8 @@ class AgentOrchestratorTest {
     @Mock DeployPipeline deployPipeline;
     @Mock RuntimeDriver driver;
     @Mock ArtifactDownloader artifactDownloader;
+    @Mock WildflyProvisioner wildflyProvisioner;
+    @Mock DatabaseVersionReader databaseVersionReader;
     @InjectMocks AgentOrchestrator orchestrator;
 
     DesiredState desiredState;
@@ -41,11 +45,13 @@ class AgentOrchestratorTest {
     void setUp() throws Exception {
         setField(orchestrator, "clientId", "cliente-abc");
         setField(orchestrator, "agentVersion", "1.0.0-SNAPSHOT");
+        lenient().when(databaseVersionReader.readDbVersion()).thenReturn(java.util.Optional.empty());
 
         desiredState = new DesiredState(
                 "wnfe", "2.5.0",
                 "https://wonderpublic.s3.sa-east-1.amazonaws.com/pacotes/5/wnfe-war-2.5.0.war",
                 "wildfly",
+                null,
                 new DesiredState.DeployConfig(
                         "C:/wildfly/standalone/deployments",
                         "http://localhost:8080/probusweb/health",

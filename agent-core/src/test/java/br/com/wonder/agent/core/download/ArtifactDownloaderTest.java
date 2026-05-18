@@ -68,7 +68,9 @@ class ArtifactDownloaderTest {
         verify(zsync).zsync(any(), optCaptor.capture());
         Credentials creds = optCaptor.getValue().getCredentials().get("192.168.0.86");
         assertThat(creds).isNotNull();
-        assertThat(creds.basic()).contains("reader");
+        String decoded = new String(java.util.Base64.getDecoder().decode(
+                creds.basic().replace("Basic ", "")));
+        assertThat(decoded).isEqualTo("reader:secret");
     }
 
     @Test
