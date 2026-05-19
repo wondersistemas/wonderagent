@@ -38,6 +38,11 @@ public class ArtifactDownloader {
     }
 
     public Artifact download(Artifact artifact) throws DownloadException {
+        if (artifact.warUrl() == null || artifact.warUrl().isBlank()) {
+            throw new DownloadException(
+                "warUrl vazio no desired-state — verifique a configuração do servidor central para clientId=" + artifact.artifactId(), null);
+        }
+
         String zsyncUrl = artifact.warUrl().replace(".war", ".zsync");
         log.info("Baixando artefato: {} via zsync — {}", artifact.coordinates(), zsyncUrl);
 
@@ -50,11 +55,11 @@ public class ArtifactDownloader {
 
         String host = URI.create(artifact.warUrl()).getHost();
 
-        Zsync.Options options = new Zsync.Options()
-                .setOutputFile(outDir.resolve(filename(artifact.warUrl())))
-                .putCredentials(host, new Credentials(username, password.orElse("")));
-
         Path outputFile = outDir.resolve(filename(artifact.warUrl()));
+
+        Zsync.Options options = new Zsync.Options()
+                .setOutputFile(outputFile)
+                .putCredentials(host, new Credentials(username, password.orElse("")));
         if (Files.exists(outputFile)) {
             log.debug("Arquivo existente encontrado, usando como base para delta: {}", outputFile);
             options = options.addInputFile(outputFile);

@@ -44,6 +44,7 @@ public class WonderAgentCommand implements Runnable {
         // O scheduler do Quarkus mantém o processo vivo
     }
 
+    @Unremovable
     @ApplicationScoped
     @Command(name = "status", mixinStandardHelpOptions = true,
              description = "Mostra estado atual do runtime e versão instalada")
@@ -60,6 +61,7 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @Unremovable
     @ApplicationScoped
     @Command(name = "detect", mixinStandardHelpOptions = true,
              description = "Detecta e imprime o estado do runtime sem agir")
@@ -72,6 +74,7 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @Unremovable
     @ApplicationScoped
     @Command(name = "check", mixinStandardHelpOptions = true,
              description = "Executa um ciclo de poll único: verifica e aplica se necessário")
@@ -84,6 +87,7 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @Unremovable
     @ApplicationScoped
     @Command(name = "install", mixinStandardHelpOptions = true,
              description = "Registra wonderagent como serviço Windows via NSSM")
@@ -128,6 +132,7 @@ public class WonderAgentCommand implements Runnable {
         }
     }
 
+    @Unremovable
     @ApplicationScoped
     @Command(name = "uninstall", mixinStandardHelpOptions = true,
              description = "Remove o serviço Windows")

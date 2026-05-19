@@ -73,7 +73,7 @@ public class AgentOrchestrator {
             try {
                 artifact = artifactDownloader.download(artifact);
             } catch (ArtifactDownloader.DownloadException e) {
-                log.error("Falha no download do artefato: {}", e.getMessage());
+                log.error("Falha no download do artefato: {}", e.getMessage(), e);
                 // Reportar erro sem tentar deploy
                 reportStatus(installedVersion, null);
                 return;

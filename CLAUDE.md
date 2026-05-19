@@ -62,7 +62,7 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - `reflect-config.json`, `resource-config.json`, `proxy-config.json` e `native-image.properties` em `agent-cli/src/main/resources/META-INF/native-image/br.com.wonder/wonderagent/`
 - `META-INF/beans.xml` (`bean-discovery-mode="annotated"`) em `agent-core`, `agent-drivers`, `agent-central-client`
 - Índice Jandex gerado em `agent-model` via `jandex-maven-plugin` 3.1.7
-- `@TopCommand` + `@ApplicationScoped` em todos os subcomandos Picocli
+- `@TopCommand` + `@ApplicationScoped` + `@Unremovable` em todos os subcomandos Picocli (sem `@Unremovable` o Quarkus remove os beans em build-time e a injeção falha com NPE)
 - `@RestClient` no injection point `AgentOrchestrator#centralClient`
 - `@Typed(WildflyDriver.class)` em `WildflyDriver` evita ambiguidade CDI; por isso `DriverProducer` injeta `Instance<WildflyDriver>` (tipo concreto) em vez de `Instance<RuntimeDriver>`
 - Propriedades opcionais que podem ser string vazia usam `Optional<String>` — SmallRye Config rejeita `String` com valor `""` (ex: `download.repository.password`)
