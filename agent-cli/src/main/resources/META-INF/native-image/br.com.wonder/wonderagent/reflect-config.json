@@ -121,15 +121,5 @@
   {
     "name": "br.com.wonder.agent.central.CentralClient",
     "allDeclaredMethods": true
-  },
-  {
-    "name": "oracle.jdbc.OracleDriver",
-    "allDeclaredConstructors": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "oracle.jdbc.driver.OracleDriver",
-    "allDeclaredConstructors": true,
-    "allDeclaredMethods": true
   }
 ]

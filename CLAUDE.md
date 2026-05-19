@@ -53,9 +53,9 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - `application.yaml` com todas as propriedades documentadas
 - Profile `native` no `agent-cli/pom.xml` para build do `.exe`
 - `ArtifactDownloader` com download via zsync (delta transfer) de S3 público
-- `DatabaseVersionReader` com leitura de `gerenciador.id_versaodb` via JDBC Oracle (ojdbc17); retorna `Optional.empty()` sem exceção se banco não configurado
+- `DatabaseVersionReader` com leitura de `gerenciador.id_versaodb` via `DataSource` Quarkus/Agroal (extensão `quarkus-jdbc-oracle`); retorna `Optional.empty()` sem exceção se banco não configurado
 - `AgentStatusReport` inclui campo `dbVersion` — enviado ao servidor central para que ele componha a versão do WAR no formato `1.<dbVersion>.<patch>` (branch `wildfly`)
-- Conexão Oracle configurável via `.env`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`
+- Conexão Oracle configurável via `.env`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` — mapeados para `quarkus.datasource.*`; DataSource inativo quando `DB_URL` está vazio
 - `DriverProducer` com seleção de driver via CDI `Instance<RuntimeDriver>` + `@Named`
 - Comandos `install` e `uninstall` do NSSM implementados
 - Comando `config show` implementado via `ConfigProvider`
@@ -65,7 +65,7 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - `@TopCommand` + `@ApplicationScoped` em todos os subcomandos Picocli
 - `@RestClient` no injection point `AgentOrchestrator#centralClient`
 - `@Typed(WildflyDriver.class)` em `WildflyDriver` evita ambiguidade CDI; por isso `DriverProducer` injeta `Instance<WildflyDriver>` (tipo concreto) em vez de `Instance<RuntimeDriver>`
-- Propriedades opcionais que podem ser string vazia usam `Optional<String>` — SmallRye Config rejeita `String` com valor `""` (ex: `db.url`, `download.repository.password`)
+- Propriedades opcionais que podem ser string vazia usam `Optional<String>` — SmallRye Config rejeita `String` com valor `""` (ex: `download.repository.password`)
 - `agent.poll-interval` como ISO 8601 duration (ex: `PT300S`) — `@Scheduled` não aceita concatenação de placeholder
 - Build Native Image validado no Linux: `mvn clean package -Pnative` → binário Linux funcional em ~45s
 
