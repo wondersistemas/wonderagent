@@ -4,7 +4,8 @@
       { "pattern": "application.yaml" },
       { "pattern": "META-INF/microprofile-config.properties" },
       { "pattern": "META-INF/services/.*" },
-      { "pattern": "META-INF/beans.xml" }
+      { "pattern": "META-INF/beans.xml" },
+      { "pattern": "oracle/i18n/data/.*" }
     ]
   },
   "bundles": []

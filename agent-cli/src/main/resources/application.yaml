@@ -2,7 +2,7 @@ agent:
   client-id: "CONFIGURE-ME"         # imutável, gerado no onboarding
   version: "1.0.0-SNAPSHOT"
   poll-interval: "PT300S"           # ISO 8601 duration — PT30S=30s, PT5M=5min
-  home: "C:/ProgramData/WonderAgent" # raiz de logs, downloads e wildfly padrão
+  home: "${user.dir}/wonderagent-data" # raiz de logs, downloads e wildfly padrão
 
 "%dev":
   agent:
@@ -11,6 +11,8 @@ agent:
     home: "${user.home}/.wonderagent-dev"
 
 quarkus:
+  native:
+    add-all-charsets: true
   banner:
     enabled: false
   index-dependency:
@@ -47,6 +49,9 @@ quarkus:
       rotation:
         max-file-size: 50M
         max-backup-index: 5
+    category:
+      "ora.jdb.dri.res.InstalledProviders":
+        level: ERROR
 
 driver:
   type: "wildfly"                   # tipo de driver: wildfly, quarkus, proxy
@@ -66,7 +71,7 @@ download:
   max-retries: 3
   repository:
     url: "http://192.168.0.86:8082"   # base URL do Reposilite
-    username: "reader"                 # usuário read-only
+    username: "${WONDER_REPO_USERNAME:wnfe-deploy}"
     # senha lida de C:\ProgramData\WonderAgent\.env:
     #   WONDER_REPO_PASSWORD=senha-aqui
     password: "${WONDER_REPO_PASSWORD:}"

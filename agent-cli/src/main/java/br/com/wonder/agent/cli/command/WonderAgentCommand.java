@@ -1,5 +1,6 @@
 package br.com.wonder.agent.cli.command;
 
+import br.com.wonder.agent.core.db.DatabaseVersionReader;
 import br.com.wonder.agent.core.poll.AgentOrchestrator;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
@@ -32,6 +33,7 @@ import picocli.CommandLine.*;
         WonderAgentCommand.InstallCommand.class,
         WonderAgentCommand.UninstallCommand.class,
         WonderAgentCommand.ConfigCommand.class,
+        WonderAgentCommand.DbVersionCommand.class,
     }
 )
 public class WonderAgentCommand implements Runnable {
@@ -83,7 +85,7 @@ public class WonderAgentCommand implements Runnable {
 
         @Override
         public void run() {
-            orchestrator.poll();
+            orchestrator.pollNow();
         }
     }
 
@@ -162,6 +164,21 @@ public class WonderAgentCommand implements Runnable {
                 System.err.println("Falha ao remover serviço: " + e.getMessage());
                 log.error("Falha ao remover serviço Windows", e);
             }
+        }
+    }
+
+    @Unremovable
+    @ApplicationScoped
+    @Command(name = "db-version", mixinStandardHelpOptions = true,
+             description = "Lê id_versaodb do banco Oracle e imprime na saída padrão")
+    static class DbVersionCommand implements Runnable {
+        @Inject DatabaseVersionReader dbVersionReader;
+
+        @Override
+        public void run() {
+            String version = dbVersionReader.readDbVersion()
+                    .orElseThrow(() -> new RuntimeException("Falha ao ler id_versaodb do banco — verifique DB_URL, DB_USERNAME e DB_PASSWORD"));
+            System.out.println(version);
         }
     }
 

@@ -2,8 +2,10 @@ package br.com.wonder.agent.core.download;
 
 import br.com.wonder.agent.model.deploy.Artifact;
 import com.salesforce.zsync.Zsync;
+import com.salesforce.zsync.ZsyncChecksumValidationFailedException;
 import com.salesforce.zsync.ZsyncException;
 import com.salesforce.zsync.http.Credentials;
+import com.salesforce.zsync.internal.ChecksumValidationIOException;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -57,20 +59,44 @@ public class ArtifactDownloader {
 
         Path outputFile = outDir.resolve(filename(artifact.warUrl()));
 
+        Path zsOld = outDir.resolve(filename(artifact.warUrl()) + ".zs-old");
+        if (Files.exists(outputFile)) {
+            try {
+                Files.move(outputFile, zsOld, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                log.debug("Arquivo anterior renomeado para delta: {}", zsOld);
+            } catch (IOException e) {
+                log.warn("Não foi possível renomear arquivo anterior: {}", e.getMessage());
+            }
+        }
+
         Zsync.Options options = new Zsync.Options()
                 .setOutputFile(outputFile)
                 .putCredentials(host, new Credentials(username, password.orElse("")));
-        if (Files.exists(outputFile)) {
-            log.debug("Arquivo existente encontrado, usando como base para delta: {}", outputFile);
-            options = options.addInputFile(outputFile);
+        if (Files.exists(zsOld)) {
+            options = options.addInputFile(zsOld);
         }
 
         try {
             Path result = zsync.zsync(URI.create(zsyncUrl), options);
             log.info("Download concluído: {}", result);
             return artifact.withLocalFile(result);
+        } catch (ZsyncChecksumValidationFailedException e) {
+            logChecksumFailure(e, artifact.coordinates());
+            try { Files.deleteIfExists(outputFile); } catch (IOException ignored) {}
+            throw new DownloadException("Checksum SHA-1 inválido após download de " + artifact.coordinates(), e);
         } catch (ZsyncException e) {
             throw new DownloadException("Falha no download zsync de " + artifact.coordinates(), e);
+        } finally {
+            try { Files.deleteIfExists(zsOld); } catch (IOException ignored) {}
+        }
+    }
+
+    private void logChecksumFailure(ZsyncChecksumValidationFailedException e, String coordinates) {
+        if (e.getCause() instanceof ChecksumValidationIOException cv) {
+            log.error("Checksum SHA-1 inválido em {}: esperado={} obtido={}", coordinates,
+                    cv.getExpectedChecksum(), cv.getActualChecksum());
+        } else {
+            log.error("Checksum SHA-1 inválido em {}: {}", coordinates, e.getMessage());
         }
     }
 

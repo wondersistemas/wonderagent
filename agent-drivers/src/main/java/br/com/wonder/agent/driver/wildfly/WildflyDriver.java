@@ -101,6 +101,8 @@ public class WildflyDriver implements RuntimeDriver {
         Instant start = Instant.now();
         try {
             Path target = Path.of(deployPath, artifactName);
+            backupCurrentVersion(target);
+
             Files.copy(artifact.localFile(), target, StandardCopyOption.REPLACE_EXISTING);
 
             // Escreve marcador de versão lido por getInstalledVersion()
@@ -113,6 +115,19 @@ public class WildflyDriver implements RuntimeDriver {
             return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
                     RuntimeState.STOPPED, RuntimeState.STOPPED,
                     "Falha ao copiar artefato: " + e.getMessage());
+        }
+    }
+
+    private void backupCurrentVersion(Path target) {
+        if (!Files.exists(target)) return;
+        String previousVersion = getInstalledVersion();
+        String label = previousVersion != null ? previousVersion : "unknown";
+        Path backup = target.resolveSibling(artifactName + ".backup-" + label);
+        try {
+            Files.copy(target, backup, StandardCopyOption.REPLACE_EXISTING);
+            log.info("Backup da versão anterior criado: {}", backup.getFileName());
+        } catch (IOException e) {
+            log.warn("Não foi possível criar backup do WAR anterior ({}): {}", label, e.getMessage());
         }
     }
 

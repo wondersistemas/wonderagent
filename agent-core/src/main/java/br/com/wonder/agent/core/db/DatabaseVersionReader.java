@@ -56,7 +56,7 @@ public class DatabaseVersionReader {
             return Optional.empty();
 
         } catch (Exception e) {
-            log.warn("Falha ao ler id_versaodb do banco: {}", e.getMessage());
+            log.error("Falha ao ler id_versaodb do banco", e);
             return Optional.empty();
         }
     }

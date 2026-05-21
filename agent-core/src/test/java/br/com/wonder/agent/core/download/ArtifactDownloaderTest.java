@@ -75,16 +75,32 @@ class ArtifactDownloaderTest {
     }
 
     @Test
-    void download_quandoArquivoExistente_adicionaComoInputFile() throws Exception {
-        Path existing = tempDir.resolve("wnfe-war-2.999.war");
-        Files.writeString(existing, "previous-war-content");
-        when(zsync.zsync(any(), any())).thenReturn(existing);
+    void download_quandoWarExistente_renomeiaPraZsOldEPassaComoInputFile() throws Exception {
+        Path war = tempDir.resolve("wnfe-war-2.999.war");
+        Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
+        Files.writeString(war, "previous-war-content");
+        when(zsync.zsync(any(), any())).thenReturn(war);
 
         downloader.download(artifact());
 
         ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
         verify(zsync).zsync(any(), optCaptor.capture());
-        assertThat(optCaptor.getValue().getInputFiles()).contains(existing);
+        // O .war original é renomeado para .zs-old e passado como input para delta
+        assertThat(optCaptor.getValue().getInputFiles()).contains(zsOld);
+        // O .war original não existe mais como input (foi renomeado)
+        assertThat(optCaptor.getValue().getInputFiles()).doesNotContain(war);
+    }
+
+    @Test
+    void download_quandoWarExistente_apagaZsOldAoFinal() throws Exception {
+        Path war = tempDir.resolve("wnfe-war-2.999.war");
+        Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
+        Files.writeString(war, "previous-war-content");
+        when(zsync.zsync(any(), any())).thenReturn(war);
+
+        downloader.download(artifact());
+
+        assertThat(zsOld).doesNotExist();
     }
 
     @Test
@@ -120,6 +136,28 @@ class ArtifactDownloaderTest {
         assertThatThrownBy(() -> downloader.download(artifact()))
                 .isInstanceOf(ArtifactDownloader.DownloadException.class)
                 .hasMessageContaining("wnfe-war:2.999");
+    }
+
+    @Test
+    void download_quandoZsyncFalha_apagaZsOldMesmoComErro() throws Exception {
+        Path war = tempDir.resolve("wnfe-war-2.999.war");
+        Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
+        Files.writeString(war, "previous-war-content");
+        when(zsync.zsync(any(), any())).thenThrow(new ZsyncException("falha"));
+
+        assertThatThrownBy(() -> downloader.download(artifact()))
+                .isInstanceOf(ArtifactDownloader.DownloadException.class);
+
+        assertThat(zsOld).doesNotExist();
+    }
+
+    @Test
+    void download_quandoWarUrlVazio_lancaDownloadException() {
+        Artifact semUrl = new Artifact("wnfe-war", "2.999", null, null);
+
+        assertThatThrownBy(() -> downloader.download(semUrl))
+                .isInstanceOf(ArtifactDownloader.DownloadException.class)
+                .hasMessageContaining("warUrl vazio");
     }
 
     private void setField(Object target, String fieldName, Object value) throws Exception {

@@ -100,6 +100,10 @@
         <!-- Sem esta flag o padrão do GraalVM é x86-64-v3 (AVX2, Haswell+), que não roda em hardware mais velho -->
         <quarkus.native.additional-build-args>-march=compatibility</quarkus.native.additional-build-args>
         <!-- Flags de reflection/init centralizadas em META-INF/native-image/br.com.wonder/wonderagent/ -->
+        <!-- Banco de dev para smoke test do Native Image — sobrescreva com -Ddb.url=... -->
+        <db.url>jdbc:oracle:thin:@//192.168.0.74:1521/DESENV</db.url>
+        <db.username>wonder</db.username>
+        <db.password>wonder</db.password>
       </properties>
       <build>
         <plugins>
@@ -115,6 +119,13 @@
                 </goals>
               </execution>
             </executions>
+            <configuration>
+              <environmentVariables>
+                <DB_URL>${db.url}</DB_URL>
+                <DB_USERNAME>${db.username}</DB_USERNAME>
+                <DB_PASSWORD>${db.password}</DB_PASSWORD>
+              </environmentVariables>
+            </configuration>
           </plugin>
         </plugins>
       </build>

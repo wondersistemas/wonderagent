@@ -70,7 +70,6 @@
         <artifactId>zsync-core</artifactId>
         <version>${zsync.version}</version>
       </dependency>
-
       <dependency>
         <groupId>info.picocli</groupId>
         <artifactId>picocli</artifactId>

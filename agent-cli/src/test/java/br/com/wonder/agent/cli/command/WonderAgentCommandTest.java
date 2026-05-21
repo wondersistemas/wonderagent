@@ -24,9 +24,9 @@ class WonderAgentCommandTest {
         @InjectMocks WonderAgentCommand.CheckCommand command;
 
         @Test
-        void run_delegaAoOrchestratorPoll() {
+        void run_delegaAoOrchestratorPollNow() {
             command.run();
-            verify(orchestrator).poll();
+            verify(orchestrator).pollNow();
         }
     }
 

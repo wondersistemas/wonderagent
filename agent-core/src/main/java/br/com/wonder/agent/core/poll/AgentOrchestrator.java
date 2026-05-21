@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Loop principal do agente.
@@ -43,8 +44,33 @@ public class AgentOrchestrator {
     @ConfigProperty(name = "agent.version")
     String agentVersion;
 
+    private final AtomicBoolean running = new AtomicBoolean(false);
+
+    /** Executa um ciclo imediato bloqueando o scheduler enquanto roda. */
+    public void pollNow() {
+        running.set(true);
+        try {
+            doPoll();
+        } finally {
+            running.set(false);
+        }
+    }
+
     @Scheduled(every = "${agent.poll-interval}")
     public void poll() {
+        if (!running.compareAndSet(false, true)) {
+            log.debug("Ciclo anterior ainda em execução, pulando — clientId={}", clientId);
+            return;
+        }
+        log.debug("Iniciando ciclo de poll — clientId={}", clientId);
+        try {
+            doPoll();
+        } finally {
+            running.set(false);
+        }
+    }
+
+    private void doPoll() {
         log.debug("Iniciando ciclo de poll — clientId={}", clientId);
         try {
             DesiredState desired = centralClient.fetchDesiredState(clientId);
@@ -69,12 +95,10 @@ public class AgentOrchestrator {
             log.info("Atualização disponível: {} → {}", installedVersion, desired.version());
             Artifact artifact = toArtifact(desired);
 
-            // Baixar artefato do Nexus
             try {
                 artifact = artifactDownloader.download(artifact);
             } catch (ArtifactDownloader.DownloadException e) {
                 log.error("Falha no download do artefato: {}", e.getMessage(), e);
-                // Reportar erro sem tentar deploy
                 reportStatus(installedVersion, null);
                 return;
             }
