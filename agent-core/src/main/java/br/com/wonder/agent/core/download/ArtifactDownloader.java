@@ -40,6 +40,10 @@ public class ArtifactDownloader {
     }
 
     public Artifact download(Artifact artifact) throws DownloadException {
+        return download(artifact, msg -> {});
+    }
+
+    public Artifact download(Artifact artifact, java.util.function.Consumer<String> progress) throws DownloadException {
         if (artifact.warUrl() == null || artifact.warUrl().isBlank()) {
             throw new DownloadException(
                 "warUrl vazio no desired-state — verifique a configuração do servidor central para clientId=" + artifact.artifactId(), null);
@@ -47,6 +51,7 @@ public class ArtifactDownloader {
 
         String zsyncUrl = artifact.warUrl().replace(".war", ".zsync");
         log.info("Baixando artefato: {} via zsync — {}", artifact.coordinates(), zsyncUrl);
+        progress.accept("  URL: " + zsyncUrl);
 
         Path outDir = Path.of(tempDir);
         try {
@@ -64,9 +69,12 @@ public class ArtifactDownloader {
             try {
                 Files.move(outputFile, zsOld, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 log.debug("Arquivo anterior renomeado para delta: {}", zsOld);
+                progress.accept("  Arquivo anterior encontrado — usando delta (zsync)");
             } catch (IOException e) {
                 log.warn("Não foi possível renomear arquivo anterior: {}", e.getMessage());
             }
+        } else {
+            progress.accept("  Nenhuma versão anterior em cache — download completo");
         }
 
         Zsync.Options options = new Zsync.Options()
@@ -77,8 +85,15 @@ public class ArtifactDownloader {
         }
 
         try {
+            progress.accept("  Transferindo...");
             Path result = zsync.zsync(URI.create(zsyncUrl), options);
             log.info("Download concluído: {}", result);
+            try {
+                long sizeMb = Files.size(result) / (1024 * 1024);
+                progress.accept("  Arquivo salvo em: " + result + " (" + sizeMb + " MB)");
+            } catch (IOException ignored) {
+                progress.accept("  Arquivo salvo em: " + result);
+            }
             return artifact.withLocalFile(result);
         } catch (ZsyncChecksumValidationFailedException e) {
             logChecksumFailure(e, artifact.coordinates());

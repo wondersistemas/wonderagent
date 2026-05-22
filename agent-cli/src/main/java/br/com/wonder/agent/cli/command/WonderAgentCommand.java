@@ -85,7 +85,7 @@ public class WonderAgentCommand implements Runnable {
 
         @Override
         public void run() {
-            orchestrator.pollNow();
+            orchestrator.pollNow(System.out::println);
         }
     }
 

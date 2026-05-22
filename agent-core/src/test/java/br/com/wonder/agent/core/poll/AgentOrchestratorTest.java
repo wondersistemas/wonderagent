@@ -75,7 +75,7 @@ class AgentOrchestratorTest {
     void poll_quandoVersaoDesatualizada_baixaEFazDeploy() throws Exception {
         when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
         when(driver.getInstalledVersion()).thenReturn("2.4.0").thenReturn("2.5.0");
-        when(artifactDownloader.download(any())).thenAnswer(inv ->
+        when(artifactDownloader.download(any(), any())).thenAnswer(inv ->
                 ((Artifact) inv.getArgument(0)).withLocalFile(Path.of("/tmp/wnfe-war-2.5.0.war")));
         when(deployPipeline.execute(any())).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(45),
@@ -85,7 +85,7 @@ class AgentOrchestratorTest {
 
         orchestrator.poll();
 
-        verify(artifactDownloader).download(any());
+        verify(artifactDownloader).download(any(), any());
         verify(deployPipeline).execute(any());
         verify(centralClient).reportStatus(eq("cliente-abc"), any());
     }
@@ -94,7 +94,7 @@ class AgentOrchestratorTest {
     void poll_quandoDownloadFalha_reportaStatusSemDeploy() throws Exception {
         when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
         when(driver.getInstalledVersion()).thenReturn("2.4.0");
-        when(artifactDownloader.download(any()))
+        when(artifactDownloader.download(any(), any()))
                 .thenThrow(new ArtifactDownloader.DownloadException("S3 indisponível", new Exception()));
         when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
         when(driver.healthCheck()).thenReturn(HealthStatus.ok());
@@ -112,7 +112,7 @@ class AgentOrchestratorTest {
 
         when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
         when(driver.getInstalledVersion()).thenReturn("2.4.0").thenReturn("2.4.0");
-        when(artifactDownloader.download(any())).thenAnswer(inv ->
+        when(artifactDownloader.download(any(), any())).thenAnswer(inv ->
                 ((Artifact) inv.getArgument(0)).withLocalFile(Path.of("/tmp/wnfe-war-2.5.0.war")));
         when(deployPipeline.execute(any())).thenReturn(falha);
         when(driver.detectState()).thenReturn(RuntimeState.STOPPED);

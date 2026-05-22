@@ -48,9 +48,17 @@ public class AgentOrchestrator {
 
     /** Executa um ciclo imediato bloqueando o scheduler enquanto roda. */
     public void pollNow() {
+        pollNow(msg -> {});
+    }
+
+    /**
+     * Executa um ciclo imediato. {@code progress} recebe mensagens de andamento
+     * para exibição no console (ex: CLI check).
+     */
+    public void pollNow(java.util.function.Consumer<String> progress) {
         running.set(true);
         try {
-            doPoll();
+            doPoll(progress);
         } finally {
             running.set(false);
         }
@@ -64,15 +72,16 @@ public class AgentOrchestrator {
         }
         log.debug("Iniciando ciclo de poll — clientId={}", clientId);
         try {
-            doPoll();
+            doPoll(msg -> {});
         } finally {
             running.set(false);
         }
     }
 
-    private void doPoll() {
+    private void doPoll(java.util.function.Consumer<String> progress) {
         log.debug("Iniciando ciclo de poll — clientId={}", clientId);
         try {
+            progress.accept("Verificando versão disponível no servidor central...");
             DesiredState desired = centralClient.fetchDesiredState(clientId);
 
             if (desired.wildflyVersion() != null) {
@@ -88,26 +97,42 @@ public class AgentOrchestrator {
 
             if (desired.version().equals(installedVersion)) {
                 log.debug("Versão atual {} já é a desejada", installedVersion);
+                progress.accept("Já está na última versão: " + installedVersion);
                 reportStatus(desired.version(), null);
                 return;
             }
 
             log.info("Atualização disponível: {} → {}", installedVersion, desired.version());
+            if (installedVersion == null) {
+                progress.accept("Nova versão disponível: " + desired.version() + " (nenhuma versão instalada)");
+            } else {
+                progress.accept("Nova versão disponível: " + installedVersion + " → " + desired.version());
+            }
+            progress.accept("Iniciando download...");
             Artifact artifact = toArtifact(desired);
 
             try {
-                artifact = artifactDownloader.download(artifact);
+                artifact = artifactDownloader.download(artifact, progress);
             } catch (ArtifactDownloader.DownloadException e) {
                 log.error("Falha no download do artefato: {}", e.getMessage(), e);
+                progress.accept("ERRO no download: " + e.getMessage());
                 reportStatus(installedVersion, null);
                 return;
             }
 
+            progress.accept("Download concluído. Aplicando deploy...");
             DeployResult result = deployPipeline.execute(artifact);
-            reportStatus(driver.getInstalledVersion(), result);
+            String finalVersion = driver.getInstalledVersion();
+            if (result.success()) {
+                progress.accept("Nova versão instalada com sucesso: " + finalVersion);
+            } else {
+                progress.accept("FALHA no deploy da versão " + desired.version());
+            }
+            reportStatus(finalVersion, result);
 
         } catch (Exception e) {
             log.error("Erro no ciclo de poll", e);
+            progress.accept("ERRO: " + e.getMessage());
         }
     }
 
