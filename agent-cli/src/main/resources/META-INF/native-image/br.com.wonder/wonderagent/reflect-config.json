@@ -90,6 +90,24 @@
     "allDeclaredMethods": true
   },
   {
+    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$DownloadServerCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$ApplyServerCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$ProvisionCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
     "name": "br.com.wonder.agent.driver.DriverProducer",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
@@ -131,5 +149,12 @@
     "name": "oracle.jdbc.diagnostics.DefaultTraceEventListenerProvider",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true
+  },
+  {
+    "name": "java.util.zip.ZipEntry",
+    "fields": [
+      {"name": "extraAttributes"},
+      {"name": "externalFileAttributes"}
+    ]
   }
 ]

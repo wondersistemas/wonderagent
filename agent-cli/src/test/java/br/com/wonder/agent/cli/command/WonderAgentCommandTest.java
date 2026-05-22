@@ -1,6 +1,7 @@
 package br.com.wonder.agent.cli.command;
 
 import br.com.wonder.agent.core.poll.AgentOrchestrator;
+import br.com.wonder.agent.core.provision.WildflyProvisioner;
 import br.com.wonder.agent.model.deploy.HealthStatus;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
@@ -13,6 +14,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -88,6 +92,90 @@ class WonderAgentCommandTest {
 
         @Test
         void run_comNssmAusente_naoPropagaExcecao() {
+            assertThatCode(() -> command.run()).doesNotThrowAnyException();
+        }
+    }
+
+    @Nested
+    class DownloadServerCommandTest {
+        @Mock WildflyProvisioner provisioner;
+        @InjectMocks WonderAgentCommand.DownloadServerCommand command;
+
+        @Test
+        void run_comVersaoExplicita_delegaAoProvisionerComVersao() throws Exception {
+            command.version = "1.0.0-SNAPSHOT";
+            command.run();
+            verify(provisioner).downloadOnly(eq("1.0.0-SNAPSHOT"), any());
+        }
+
+        @Test
+        void run_semVersao_delegaAoProvisionerSemVersao() throws Exception {
+            command.version = null;
+            command.run();
+            verify(provisioner).downloadOnly(any(java.util.function.Consumer.class));
+        }
+
+        @Test
+        void run_quandoProvisioner_lancaExcecao_naoPropaga() throws Exception {
+            command.version = "1.0.0-SNAPSHOT";
+            doThrow(new WildflyProvisioner.ProvisioningException("erro", null))
+                    .when(provisioner).downloadOnly(any(String.class), any());
+            assertThatCode(() -> command.run()).doesNotThrowAnyException();
+        }
+    }
+
+    @Nested
+    class ApplyServerCommandTest {
+        @Mock WildflyProvisioner provisioner;
+        @InjectMocks WonderAgentCommand.ApplyServerCommand command;
+
+        @Test
+        void run_comVersaoExplicita_delegaAoProvisioner() throws Exception {
+            command.version = "1.0.0-SNAPSHOT";
+            command.run();
+            verify(provisioner).applyFromCache(eq("1.0.0-SNAPSHOT"), any());
+        }
+
+        @Test
+        void run_semVersao_passaNullAoProvisioner() throws Exception {
+            command.version = null;
+            command.run();
+            verify(provisioner).applyFromCache(isNull(), any());
+        }
+
+        @Test
+        void run_quandoProvisioner_lancaExcecao_naoPropaga() throws Exception {
+            command.version = null;
+            doThrow(new WildflyProvisioner.ProvisioningException("sem cache", null))
+                    .when(provisioner).applyFromCache(any(), any());
+            assertThatCode(() -> command.run()).doesNotThrowAnyException();
+        }
+    }
+
+    @Nested
+    class ProvisionCommandTest {
+        @Mock WildflyProvisioner provisioner;
+        @InjectMocks WonderAgentCommand.ProvisionCommand command;
+
+        @Test
+        void run_comVersaoExplicita_chamaEnsureVersion() throws Exception {
+            command.version = "1.0.0-SNAPSHOT";
+            command.run();
+            verify(provisioner).ensureVersion(eq("1.0.0-SNAPSHOT"), any());
+        }
+
+        @Test
+        void run_semVersao_chamaEnsureLatestVersion() throws Exception {
+            command.version = null;
+            command.run();
+            verify(provisioner).ensureLatestVersion(any());
+        }
+
+        @Test
+        void run_quandoProvisioner_lancaExcecao_naoPropaga() throws Exception {
+            command.version = null;
+            doThrow(new WildflyProvisioner.ProvisioningException("falha", null))
+                    .when(provisioner).ensureLatestVersion(any());
             assertThatCode(() -> command.run()).doesNotThrowAnyException();
         }
     }

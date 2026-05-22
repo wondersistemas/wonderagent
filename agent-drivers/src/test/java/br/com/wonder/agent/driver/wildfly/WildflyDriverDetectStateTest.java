@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.util.OptionalLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,8 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Testa detectState() sem WildFly real usando um servidor HTTP mínimo
  * que simula a management API.
  *
- * Como isProcessAlive() usa tasklist.exe (Windows only), os testes injetam
- * um WildflyDriver com isProcessAlive() sobrescrito via subclasse de teste.
+ * isProcessAlive() e findWildflyPid() são sobrescritos nas subclasses de teste
+ * para evitar varrer todos os processos do sistema em ambiente de CI.
  */
 class WildflyDriverDetectStateTest {
 
@@ -26,19 +27,19 @@ class WildflyDriverDetectStateTest {
     HttpServer managementServer;
     int managementPort;
 
-    /** Subclasse de teste que simula processo vivo sem chamar tasklist.exe. */
+    /** Subclasse de teste que simula processo vivo (PID fictício). */
     static class TestableWildflyDriver extends WildflyDriver {
         @Override
-        protected boolean isProcessAlive() {
-            return true;
+        OptionalLong findWildflyPid() {
+            return OptionalLong.of(99999L);
         }
     }
 
-    /** Subclasse de teste que simula processo ausente sem chamar tasklist.exe. */
+    /** Subclasse de teste que simula processo ausente. */
     static class StoppedWildflyDriver extends WildflyDriver {
         @Override
-        protected boolean isProcessAlive() {
-            return false;
+        OptionalLong findWildflyPid() {
+            return OptionalLong.empty();
         }
     }
 
@@ -74,7 +75,6 @@ class WildflyDriverDetectStateTest {
             if (query != null && query.contains("name=server-state")) {
                 body = "\"running\"".getBytes();
             } else {
-                // Status do deployment: 404 = sem deployment com falha
                 exchange.sendResponseHeaders(404, -1);
                 exchange.getResponseBody().close();
                 return;
@@ -154,8 +154,26 @@ class WildflyDriverDetectStateTest {
         assertThat(state).isEqualTo(RuntimeState.STOPPED);
     }
 
+    // ── findWildflyPid — filtragem por wildflyHome ────────────────────────────
+
+    @Test
+    void findWildflyPid_filtraPorWildflyHome_naoRetornaOutrosProcessos() throws Exception {
+        // Usa o driver real para verificar que o método filtra corretamente.
+        // Em ambiente de teste não há WildFly real, então o resultado deve ser vazio.
+        WildflyDriver driver = new WildflyDriver();
+        setField(driver, "wildflyHome", "/caminho/que/nao/existe/wildfly-test-" + System.nanoTime());
+        setField(driver, "managementPort", 9990);
+        setField(driver, "deployPath", tempDir.toString());
+        setField(driver, "artifactName", "wnfe.war");
+        setField(driver, "startTimeoutSeconds", 1);
+        setField(driver, "stopTimeoutSeconds", 1);
+        setField(driver, "healthCheckUrl", "http://localhost:8080/probusweb/health");
+
+        // Não deve encontrar nenhum processo com esse caminho fictício
+        assertThat(driver.findWildflyPid()).isEmpty();
+    }
+
     private void setField(Object target, String fieldName, Object value) throws Exception {
-        // Busca o campo na hierarquia de classes
         Class<?> clazz = target.getClass();
         while (clazz != null) {
             try {

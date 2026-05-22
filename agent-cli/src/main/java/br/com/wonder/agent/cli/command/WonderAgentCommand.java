@@ -2,6 +2,7 @@ package br.com.wonder.agent.cli.command;
 
 import br.com.wonder.agent.core.db.DatabaseVersionReader;
 import br.com.wonder.agent.core.poll.AgentOrchestrator;
+import br.com.wonder.agent.core.provision.WildflyProvisioner;
 import br.com.wonder.agent.model.deploy.Artifact;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
@@ -42,6 +43,9 @@ import java.nio.file.Path;
         WonderAgentCommand.UninstallCommand.class,
         WonderAgentCommand.ConfigCommand.class,
         WonderAgentCommand.DbVersionCommand.class,
+        WonderAgentCommand.DownloadServerCommand.class,
+        WonderAgentCommand.ApplyServerCommand.class,
+        WonderAgentCommand.ProvisionCommand.class,
     }
 )
 public class WonderAgentCommand implements Runnable {
@@ -262,6 +266,80 @@ public class WonderAgentCommand implements Runnable {
             String version = dbVersionReader.readDbVersion()
                     .orElseThrow(() -> new RuntimeException("Falha ao ler id_versaodb do banco — verifique DB_URL, DB_USERNAME e DB_PASSWORD"));
             System.out.println(version);
+        }
+    }
+
+    @Unremovable
+    @ApplicationScoped
+    @Command(name = "download-server", mixinStandardHelpOptions = true,
+             description = "Baixa o ZIP do WildFly para o cache local (sem instalar). Usa zsync delta se já houver versão em cache.")
+    static class DownloadServerCommand implements Runnable {
+        @Inject WildflyProvisioner provisioner;
+
+        @Option(names = "--version",
+                description = "Versão do wildfly-provisioning a baixar. Se omitido, resolve a última versão publicada no Reposilite.")
+        String version;
+
+        @Override
+        public void run() {
+            try {
+                if (version != null) {
+                    provisioner.downloadOnly(version, System.out::println);
+                } else {
+                    provisioner.downloadOnly(System.out::println);
+                }
+            } catch (WildflyProvisioner.ProvisioningException e) {
+                System.err.println("ERRO: " + e.getMessage());
+                log.error("Falha no download-server", e);
+            }
+        }
+    }
+
+    @Unremovable
+    @ApplicationScoped
+    @Command(name = "apply-server", mixinStandardHelpOptions = true,
+             description = "Extrai e instala o ZIP do WildFly já presente no cache local. Execute download-server antes.")
+    static class ApplyServerCommand implements Runnable {
+        @Inject WildflyProvisioner provisioner;
+
+        @Option(names = "--version",
+                description = "Versão a aplicar. Se omitido, usa o ZIP mais recente no cache.")
+        String version;
+
+        @Override
+        public void run() {
+            try {
+                provisioner.applyFromCache(version, System.out::println);
+            } catch (WildflyProvisioner.ProvisioningException e) {
+                System.err.println("ERRO: " + e.getMessage());
+                log.error("Falha no apply-server", e);
+            }
+        }
+    }
+
+    @Unremovable
+    @ApplicationScoped
+    @Command(name = "provision", mixinStandardHelpOptions = true,
+             description = "Baixa e instala o WildFly (download-server + apply-server). Se já estiver na versão correta, não faz nada.")
+    static class ProvisionCommand implements Runnable {
+        @Inject WildflyProvisioner provisioner;
+
+        @Option(names = "--version",
+                description = "Versão do wildfly-provisioning. Se omitido, resolve a última versão publicada no Reposilite.")
+        String version;
+
+        @Override
+        public void run() {
+            try {
+                if (version != null) {
+                    provisioner.ensureVersion(version, System.out::println);
+                } else {
+                    provisioner.ensureLatestVersion(System.out::println);
+                }
+            } catch (WildflyProvisioner.ProvisioningException e) {
+                System.err.println("ERRO: " + e.getMessage());
+                log.error("Falha no provision", e);
+            }
         }
     }
 

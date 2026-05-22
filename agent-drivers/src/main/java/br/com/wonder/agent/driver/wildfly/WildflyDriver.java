@@ -19,10 +19,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.OptionalLong;
 
 /**
- * Driver para WildFly 36.
+ * Driver para WildFly 36. Funciona em Windows e Linux.
  * Usa a management API HTTP (porta 9990) para detectar estado e gerenciar deployments.
+ * Usa ProcessHandle.allProcesses() para localizar o processo WildFly pelo wildflyHome,
+ * evitando afetar outras instâncias Java ou WildFly em execução na mesma máquina.
  *
  * Ver docs/drivers/wildfly-driver.md para detalhes de cada operação.
  */
@@ -134,8 +137,11 @@ public class WildflyDriver implements RuntimeDriver {
     @Override
     public boolean start() {
         try {
-            String cliPath = wildflyHome + "/bin/standalone.bat";
-            new ProcessBuilder(cliPath)
+            String[] cmd = isLinux()
+                    ? new String[]{"bash", "-c",
+                        "nohup " + wildflyHome + "/bin/standalone.sh > /dev/null 2>&1 &"}
+                    : new String[]{wildflyHome + "/bin/standalone.bat"};
+            new ProcessBuilder(cmd)
                     .directory(Path.of(wildflyHome).toFile())
                     .start();
             return waitForState(RuntimeState.RUNNING, startTimeoutSeconds);
@@ -148,9 +154,12 @@ public class WildflyDriver implements RuntimeDriver {
     @Override
     public boolean stop() {
         try {
-            String cli = wildflyHome + "/bin/jboss-cli.bat";
-            Process p = new ProcessBuilder(cli, "--connect", "--command=:shutdown")
-                    .start();
+            String[] cmd = isLinux()
+                    ? new String[]{"bash", wildflyHome + "/bin/jboss-cli.sh",
+                        "--connect", "--command=:shutdown"}
+                    : new String[]{wildflyHome + "/bin/jboss-cli.bat",
+                        "--connect", "--command=:shutdown"};
+            Process p = new ProcessBuilder(cmd).start();
             p.waitFor();
             return waitForState(RuntimeState.STOPPED, stopTimeoutSeconds);
         } catch (Exception e) {
@@ -162,10 +171,9 @@ public class WildflyDriver implements RuntimeDriver {
     @Override
     public boolean forceKill() {
         try {
-            // taskkill por nome do processo Java do WildFly
-            Process p = new ProcessBuilder("taskkill", "/F", "/IM", "java.exe", "/FI",
-                    "WINDOWTITLE eq WildFly*").start();
-            p.waitFor();
+            findWildflyPid().ifPresent(pid ->
+                ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly)
+            );
             return waitForState(RuntimeState.STOPPED, 15);
         } catch (Exception e) {
             log.error("forceKill falhou: {}", e.getMessage());
@@ -189,15 +197,27 @@ public class WildflyDriver implements RuntimeDriver {
 
     // ── Métodos privados ──────────────────────────────────────────────────────
 
+    private boolean isLinux() {
+        return System.getProperty("os.name").toLowerCase().contains("linux");
+    }
+
+    /**
+     * Localiza o PID do processo WildFly desta instalação específica.
+     * Filtra por processos cujo commandLine contém "jboss-modules" E o caminho do wildflyHome,
+     * evitando afetar outras instâncias Java ou outros WildFly na mesma máquina.
+     */
+    OptionalLong findWildflyPid() {
+        String home = Path.of(wildflyHome).toAbsolutePath().toString();
+        return ProcessHandle.allProcesses()
+                .filter(p -> p.info().commandLine()
+                        .map(cmd -> cmd.contains("jboss-modules") && cmd.contains(home))
+                        .orElse(false))
+                .mapToLong(ProcessHandle::pid)
+                .findFirst();
+    }
+
     protected boolean isProcessAlive() {
-        try {
-            Process p = new ProcessBuilder("tasklist", "/FI", "IMAGENAME eq java.exe")
-                    .start();
-            String output = new String(p.getInputStream().readAllBytes());
-            return output.contains("java.exe");
-        } catch (IOException e) {
-            return false;
-        }
+        return findWildflyPid().isPresent();
     }
 
     private boolean isManagementPortOpen() {
