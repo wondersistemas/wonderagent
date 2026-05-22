@@ -2,6 +2,7 @@ package br.com.wonder.agent.cli.command;
 
 import br.com.wonder.agent.core.db.DatabaseVersionReader;
 import br.com.wonder.agent.core.poll.AgentOrchestrator;
+import br.com.wonder.agent.model.deploy.Artifact;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
 import io.quarkus.arc.Unremovable;
@@ -10,7 +11,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.ConfigProvider;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import picocli.CommandLine.*;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * Comandos CLI do agente. Entry point: wonderagent.exe [comando]
@@ -30,6 +36,8 @@ import picocli.CommandLine.*;
         WonderAgentCommand.StatusCommand.class,
         WonderAgentCommand.DetectCommand.class,
         WonderAgentCommand.CheckCommand.class,
+        WonderAgentCommand.UpdateCommand.class,
+        WonderAgentCommand.DeployCommand.class,
         WonderAgentCommand.InstallCommand.class,
         WonderAgentCommand.UninstallCommand.class,
         WonderAgentCommand.ConfigCommand.class,
@@ -43,6 +51,7 @@ public class WonderAgentCommand implements Runnable {
     @Override
     public void run() {
         log.info("Iniciando WonderAgent em modo serviço");
+        orchestrator.startServiceMode();
         // O scheduler do Quarkus mantém o processo vivo
     }
 
@@ -86,6 +95,80 @@ public class WonderAgentCommand implements Runnable {
         @Override
         public void run() {
             orchestrator.pollNow(System.out::println);
+        }
+    }
+
+    @Unremovable
+    @ApplicationScoped
+    @Command(name = "update", mixinStandardHelpOptions = true,
+             description = "Consulta o servidor central e baixa nova versão se disponível (sem fazer deploy)")
+    static class UpdateCommand implements Runnable {
+        @Inject AgentOrchestrator orchestrator;
+
+        @Override
+        public void run() {
+            orchestrator.update(System.out::println);
+        }
+    }
+
+    @Unremovable
+    @ApplicationScoped
+    @Command(name = "deploy", mixinStandardHelpOptions = true,
+             description = "Faz deploy do artefato já baixado pelo comando update")
+    static class DeployCommand implements Runnable {
+        @Inject AgentOrchestrator orchestrator;
+
+        @ConfigProperty(name = "download.temp-dir")
+        String tempDir;
+
+        @ConfigProperty(name = "driver.wildfly.artifact-name")
+        String artifactName;
+
+        @Override
+        public void run() {
+            Path warFile;
+            try {
+                warFile = findWarInTempDir();
+            } catch (IOException e) {
+                System.err.println("ERRO ao acessar diretório de downloads: " + e.getMessage());
+                return;
+            }
+
+            if (warFile == null) {
+                System.err.println("Nenhum artefato encontrado em " + tempDir + " — execute 'wonderagent update' primeiro.");
+                return;
+            }
+
+            // Extrai a versão do nome do arquivo: wnfe-war-2.5.0.war → 2.5.0
+            String version = extractVersion(warFile.getFileName().toString());
+            Artifact artifact = new Artifact(
+                    artifactName.replace(".war", ""),
+                    version,
+                    null,
+                    warFile
+            );
+            orchestrator.deployArtifact(artifact, System.out::println);
+        }
+
+        private Path findWarInTempDir() throws IOException {
+            Path dir = Path.of(tempDir);
+            if (!Files.isDirectory(dir)) return null;
+            try (var stream = Files.list(dir)) {
+                return stream
+                        .filter(p -> p.getFileName().toString().endsWith(".war"))
+                        .max(java.util.Comparator.comparingLong(p -> {
+                            try { return Files.getLastModifiedTime(p).toMillis(); }
+                            catch (IOException e) { return 0L; }
+                        }))
+                        .orElse(null);
+            }
+        }
+
+        private static String extractVersion(String filename) {
+            // wnfe-war-2.5.0.war → 2.5.0
+            String withoutExt = filename.endsWith(".war") ? filename.substring(0, filename.length() - 4) : filename;
+            int lastDash = withoutExt.lastIndexOf('-');
+            return lastDash >= 0 ? withoutExt.substring(lastDash + 1) : withoutExt;
         }
     }
 

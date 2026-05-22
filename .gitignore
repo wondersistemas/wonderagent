@@ -19,3 +19,4 @@ application-local.yaml
 
 # Diretório criado pelo binário nativo ao rodar em Linux (simula C:\ProgramData)
 C:/
+agent-cli/wonderagent-data

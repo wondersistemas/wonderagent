@@ -46,6 +46,7 @@ class AgentOrchestratorTest {
         setField(orchestrator, "clientId", "cliente-abc");
         setField(orchestrator, "agentVersion", "1.0.0-SNAPSHOT");
         lenient().when(databaseVersionReader.readDbVersion()).thenReturn(java.util.Optional.empty());
+        orchestrator.startServiceMode();
 
         desiredState = new DesiredState(
                 "wnfe", "2.5.0",
@@ -150,6 +151,21 @@ class AgentOrchestratorTest {
         orchestrator.poll();
 
         verify(centralClient, never()).reportStatus(any(), any());
+    }
+
+    @Test
+    void poll_semModoServico_naoExecutaCiclo() throws Exception {
+        // Nova instância sem startServiceMode()
+        AgentOrchestrator semServico = new AgentOrchestrator();
+        setField(semServico, "centralClient", centralClient);
+        setField(semServico, "deployPipeline", deployPipeline);
+        setField(semServico, "artifactDownloader", artifactDownloader);
+        setField(semServico, "clientId", "cliente-abc");
+        setField(semServico, "agentVersion", "1.0.0-SNAPSHOT");
+
+        semServico.poll();
+
+        verifyNoInteractions(centralClient, deployPipeline, artifactDownloader);
     }
 
     private void setField(Object target, String fieldName, Object value) throws Exception {
