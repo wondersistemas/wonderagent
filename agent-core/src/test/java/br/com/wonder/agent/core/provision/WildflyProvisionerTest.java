@@ -75,12 +75,12 @@ class WildflyProvisionerTest {
         Files.writeString(wildflyHome.resolve(".wildfly-version"), "0.9.0");
 
         Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any())).thenReturn(fakeZip);
+        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
 
         boolean result = provisioner.ensureVersion(VERSION);
 
         assertThat(result).isTrue();
-        verify(zsync).zsync(any(), any());
+        verify(zsync).zsync(any(), any(), any());
         assertThat(wildflyHome.resolve(".wildfly-version")).hasContent(VERSION);
     }
 
@@ -89,7 +89,7 @@ class WildflyProvisionerTest {
         // nenhum .wildfly-version presente
 
         Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any())).thenReturn(fakeZip);
+        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
 
         boolean result = provisioner.ensureVersion(VERSION);
 
@@ -116,24 +116,24 @@ class WildflyProvisionerTest {
     @Test
     void ensureVersion_passaZsyncUrlCorreta() throws Exception {
         Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any())).thenReturn(fakeZip);
+        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
 
         provisioner.ensureVersion(VERSION);
 
         ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
-        verify(zsync).zsync(uriCaptor.capture(), any());
+        verify(zsync).zsync(uriCaptor.capture(), any(), any());
         assertThat(uriCaptor.getValue().toString()).endsWith("-dist.zip.zsync");
     }
 
     @Test
     void ensureVersion_passaCredenciaisParaHost() throws Exception {
         Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any())).thenReturn(fakeZip);
+        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
 
         provisioner.ensureVersion(VERSION);
 
         ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
-        verify(zsync).zsync(any(), optCaptor.capture());
+        verify(zsync).zsync(any(), optCaptor.capture(), any());
         Credentials creds = optCaptor.getValue().getCredentials().get("192.168.0.86");
         assertThat(creds).isNotNull();
         // basic() retorna "Basic <base64(user:pass)>" — decodifica para verificar username
@@ -148,12 +148,12 @@ class WildflyProvisionerTest {
         Path existing = tempDir.resolve(filename);
         // cria ZIP fake no local do cache
         criarZipFakeEm(existing, VERSION);
-        when(zsync.zsync(any(), any())).thenReturn(existing);
+        when(zsync.zsync(any(), any(), any())).thenReturn(existing);
 
         provisioner.ensureVersion(VERSION);
 
         ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
-        verify(zsync).zsync(any(), optCaptor.capture());
+        verify(zsync).zsync(any(), optCaptor.capture(), any());
         assertThat(optCaptor.getValue().getInputFiles()).contains(existing);
     }
 
@@ -161,7 +161,7 @@ class WildflyProvisionerTest {
 
     @Test
     void ensureVersion_quandoZsyncFalha_lancaProvisioningException() throws Exception {
-        when(zsync.zsync(any(), any())).thenThrow(new ZsyncException("servidor inacessível"));
+        when(zsync.zsync(any(), any(), any())).thenThrow(new ZsyncException("servidor inacessível"));
 
         assertThatThrownBy(() -> provisioner.ensureVersion(VERSION))
                 .isInstanceOf(WildflyProvisioner.ProvisioningException.class)
@@ -183,7 +183,7 @@ class WildflyProvisionerTest {
             zos.write("#!/bin/sh\n".getBytes());
             zos.closeEntry();
         }
-        when(zsync.zsync(any(), any())).thenReturn(fakeZip);
+        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
 
         provisioner.ensureVersion(VERSION);
 

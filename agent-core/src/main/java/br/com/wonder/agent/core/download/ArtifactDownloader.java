@@ -6,6 +6,7 @@ import com.salesforce.zsync.ZsyncChecksumValidationFailedException;
 import com.salesforce.zsync.ZsyncException;
 import com.salesforce.zsync.http.Credentials;
 import com.salesforce.zsync.internal.ChecksumValidationIOException;
+import com.squareup.okhttp.OkHttpClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -15,6 +16,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @ApplicationScoped
@@ -32,7 +34,10 @@ public class ArtifactDownloader {
     private final Zsync zsync;
 
     ArtifactDownloader() {
-        this.zsync = new Zsync();
+        OkHttpClient http = new OkHttpClient();
+        http.setReadTimeout(30, TimeUnit.SECONDS);
+        http.setWriteTimeout(30, TimeUnit.SECONDS);
+        this.zsync = new Zsync(http);
     }
 
     ArtifactDownloader(Zsync zsync) {
@@ -84,9 +89,11 @@ public class ArtifactDownloader {
             options = options.addInputFile(zsOld);
         }
 
+        DownloadProgressObserver observer = new DownloadProgressObserver(progress);
         try {
             progress.accept("  Transferindo...");
-            Path result = zsync.zsync(URI.create(zsyncUrl), options);
+            Path result = zsync.zsync(URI.create(zsyncUrl), options, observer);
+            observer.reportFinal();
             log.info("Download concluído: {}", result);
             try {
                 long sizeMb = Files.size(result) / (1024 * 1024);

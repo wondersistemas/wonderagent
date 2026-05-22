@@ -1,8 +1,10 @@
 package br.com.wonder.agent.core.provision;
 
+import br.com.wonder.agent.core.download.DownloadProgressObserver;
 import com.salesforce.zsync.Zsync;
 import com.salesforce.zsync.ZsyncException;
 import com.salesforce.zsync.http.Credentials;
+import com.squareup.okhttp.OkHttpClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -12,6 +14,8 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -61,7 +65,10 @@ public class WildflyProvisioner {
     private final Zsync zsync;
 
     WildflyProvisioner() {
-        this.zsync = new Zsync();
+        OkHttpClient http = new OkHttpClient();
+        http.setReadTimeout(30, TimeUnit.SECONDS);
+        http.setWriteTimeout(30, TimeUnit.SECONDS);
+        this.zsync = new Zsync(http);
     }
 
     // visível para testes
@@ -77,6 +84,13 @@ public class WildflyProvisioner {
      * @return true se houve instalação, false se já estava na versão correta
      */
     public boolean ensureVersion(String desiredVersion) throws ProvisioningException {
+        return ensureVersion(desiredVersion, msg -> {});
+    }
+
+    /**
+     * Variante com callback de progresso para exibição no console durante download.
+     */
+    public boolean ensureVersion(String desiredVersion, Consumer<String> progress) throws ProvisioningException {
         String targetVersion = resolveVersion(desiredVersion);
 
         String installed = readInstalledVersion();
@@ -89,7 +103,7 @@ public class WildflyProvisioner {
                 installed, targetVersion);
 
         String zipUrl = buildZipUrl(targetVersion);
-        Path zipFile = downloadZip(zipUrl, targetVersion);
+        Path zipFile = downloadZip(zipUrl, targetVersion, progress);
         extractZip(zipFile, Path.of(wildflyHome));
         writeInstalledVersion(targetVersion);
 
@@ -110,7 +124,7 @@ public class WildflyProvisioner {
                 + "/" + GROUP_PATH + "/" + ARTIFACT_ID + "/" + version + "/" + filename;
     }
 
-    private Path downloadZip(String zipUrl, String version) throws ProvisioningException {
+    private Path downloadZip(String zipUrl, String version, Consumer<String> progress) throws ProvisioningException {
         String zsyncUrl = zipUrl + ".zsync";
         String host = URI.create(zipUrl).getHost();
         String filename = ARTIFACT_ID + "-" + version + "-" + CLASSIFIER + ".zip";
@@ -131,11 +145,17 @@ public class WildflyProvisioner {
         if (Files.exists(outFile)) {
             log.debug("ZIP existente encontrado, usando como base para delta: {}", outFile);
             options = options.addInputFile(outFile);
+            progress.accept("  Arquivo anterior encontrado — usando delta (zsync)");
+        } else {
+            progress.accept("  Nenhuma versão anterior em cache — download completo");
         }
 
         log.info("Baixando WildFly {} via zsync — {}", version, zsyncUrl);
+        DownloadProgressObserver observer = new DownloadProgressObserver(progress);
         try {
-            zsync.zsync(URI.create(zsyncUrl), options);
+            progress.accept("  Transferindo...");
+            zsync.zsync(URI.create(zsyncUrl), options, observer);
+            observer.reportFinal();
             return outFile;
         } catch (ZsyncException e) {
             throw new ProvisioningException(

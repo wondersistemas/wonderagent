@@ -48,12 +48,12 @@ class ArtifactDownloaderTest {
     void download_usaUrlZsyncSubstituindoExtensao() throws Exception {
         Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
         Files.createFile(downloaded);
-        when(zsync.zsync(any(), any())).thenReturn(downloaded);
+        when(zsync.zsync(any(), any(), any())).thenReturn(downloaded);
 
         downloader.download(artifact());
 
         ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
-        verify(zsync).zsync(uriCaptor.capture(), any());
+        verify(zsync).zsync(uriCaptor.capture(), any(), any());
         assertThat(uriCaptor.getValue().toString()).isEqualTo(ZSYNC_URL);
     }
 
@@ -61,12 +61,12 @@ class ArtifactDownloaderTest {
     void download_passaCredenciaisParaOHost() throws Exception {
         Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
         Files.createFile(downloaded);
-        when(zsync.zsync(any(), any())).thenReturn(downloaded);
+        when(zsync.zsync(any(), any(), any())).thenReturn(downloaded);
 
         downloader.download(artifact());
 
         ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
-        verify(zsync).zsync(any(), optCaptor.capture());
+        verify(zsync).zsync(any(), optCaptor.capture(), any());
         Credentials creds = optCaptor.getValue().getCredentials().get("192.168.0.86");
         assertThat(creds).isNotNull();
         String decoded = new String(java.util.Base64.getDecoder().decode(
@@ -79,12 +79,12 @@ class ArtifactDownloaderTest {
         Path war = tempDir.resolve("wnfe-war-2.999.war");
         Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
         Files.writeString(war, "previous-war-content");
-        when(zsync.zsync(any(), any())).thenReturn(war);
+        when(zsync.zsync(any(), any(), any())).thenReturn(war);
 
         downloader.download(artifact());
 
         ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
-        verify(zsync).zsync(any(), optCaptor.capture());
+        verify(zsync).zsync(any(), optCaptor.capture(), any());
         // O .war original é renomeado para .zs-old e passado como input para delta
         assertThat(optCaptor.getValue().getInputFiles()).contains(zsOld);
         // O .war original não existe mais como input (foi renomeado)
@@ -96,7 +96,7 @@ class ArtifactDownloaderTest {
         Path war = tempDir.resolve("wnfe-war-2.999.war");
         Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
         Files.writeString(war, "previous-war-content");
-        when(zsync.zsync(any(), any())).thenReturn(war);
+        when(zsync.zsync(any(), any(), any())).thenReturn(war);
 
         downloader.download(artifact());
 
@@ -106,12 +106,12 @@ class ArtifactDownloaderTest {
     @Test
     void download_quandoSemArquivoExistente_naoAdicionaInputFile() throws Exception {
         Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
-        when(zsync.zsync(any(), any())).thenReturn(downloaded);
+        when(zsync.zsync(any(), any(), any())).thenReturn(downloaded);
 
         downloader.download(artifact());
 
         ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
-        verify(zsync).zsync(any(), optCaptor.capture());
+        verify(zsync).zsync(any(), optCaptor.capture(), any());
         assertThat(optCaptor.getValue().getInputFiles()).isEmpty();
     }
 
@@ -119,7 +119,7 @@ class ArtifactDownloaderTest {
     void download_retornaArtifactComLocalFilePreenchido() throws Exception {
         Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
         Files.createFile(downloaded);
-        when(zsync.zsync(any(), any())).thenReturn(downloaded);
+        when(zsync.zsync(any(), any(), any())).thenReturn(downloaded);
 
         Artifact original = artifact();
         Artifact result = downloader.download(original);
@@ -131,7 +131,7 @@ class ArtifactDownloaderTest {
 
     @Test
     void download_quandoZsyncFalha_lancaDownloadException() throws Exception {
-        when(zsync.zsync(any(), any())).thenThrow(new ZsyncException("repositório inacessível"));
+        when(zsync.zsync(any(), any(), any())).thenThrow(new ZsyncException("repositório inacessível"));
 
         assertThatThrownBy(() -> downloader.download(artifact()))
                 .isInstanceOf(ArtifactDownloader.DownloadException.class)
@@ -143,7 +143,7 @@ class ArtifactDownloaderTest {
         Path war = tempDir.resolve("wnfe-war-2.999.war");
         Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
         Files.writeString(war, "previous-war-content");
-        when(zsync.zsync(any(), any())).thenThrow(new ZsyncException("falha"));
+        when(zsync.zsync(any(), any(), any())).thenThrow(new ZsyncException("falha"));
 
         assertThatThrownBy(() -> downloader.download(artifact()))
                 .isInstanceOf(ArtifactDownloader.DownloadException.class);

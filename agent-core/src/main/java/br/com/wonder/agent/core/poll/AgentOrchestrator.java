@@ -103,7 +103,7 @@ public class AgentOrchestrator {
 
             if (desired.wildflyVersion() != null) {
                 try {
-                    wildflyProvisioner.ensureVersion(desired.wildflyVersion());
+                    wildflyProvisioner.ensureVersion(desired.wildflyVersion(), progress);
                 } catch (WildflyProvisioner.ProvisioningException e) {
                     log.error("Falha ao provisionar WildFly {}: {}", desired.wildflyVersion(), e.getMessage());
                 }
