@@ -12,7 +12,7 @@ Tudo deriva de `agent.home`. A estrutura padrão após instalação:
 C:\ProgramData\WonderAgent\          ← agent.home
   wonderagent.exe
   application.yaml
-  .env                               ← variáveis de ambiente (senhas, versão fixada)
+  .env                               ← variáveis de ambiente do agente (senhas, versão fixada)
   logs\
     agent.log                        ← quarkus.log.file.path
   downloads\                         ← download.temp-dir
@@ -20,6 +20,7 @@ C:\ProgramData\WonderAgent\          ← agent.home
     wildfly-provisioning-x-dist.zip  ← cache para delta zsync do WildFly
   wildfly\                           ← driver.wildfly.home
     .wildfly-version                 ← versão do WildFly instalado
+    .env                             ← variáveis do WildFly: DB_URL, DB_USER, DB_PASSWORD, WILDFLY_MGMT_USER, WILDFLY_MGMT_PASSWORD
     bin\
     standalone\
       deployments\                   ← driver.wildfly.deploy-path

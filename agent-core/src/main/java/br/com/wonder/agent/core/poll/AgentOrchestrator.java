@@ -155,7 +155,8 @@ public class AgentOrchestrator {
             if (result.success()) {
                 progress.accept("Nova versão instalada com sucesso: " + finalVersion);
             } else {
-                progress.accept("FALHA no deploy da versão " + artifact.version());
+                String reason = result.failureReason() != null ? ": " + result.failureReason() : "";
+                progress.accept("FALHA no deploy da versão " + artifact.version() + reason);
             }
             reportStatus(finalVersion, result);
         } catch (Exception e) {

@@ -19,6 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Enumeration;
 import java.util.Optional;
@@ -70,6 +72,15 @@ public class WildflyProvisioner {
                     defaultValue = "wnfe-releases")
     String repoPath;
 
+    @ConfigProperty(name = "quarkus.datasource.jdbc.url", defaultValue = "")
+    Optional<String> dbUrl;
+
+    @ConfigProperty(name = "quarkus.datasource.username", defaultValue = "")
+    Optional<String> dbUsername;
+
+    @ConfigProperty(name = "quarkus.datasource.password", defaultValue = "")
+    Optional<String> dbPassword;
+
     private final Zsync zsync;
 
     @Inject
@@ -120,6 +131,7 @@ public class WildflyProvisioner {
 
         Path zipFile = downloadZip(targetVersion, progress);
         extractZip(zipFile, Path.of(wildflyHome));
+        setupManagementUser(progress);
         writeInstalledVersion(targetVersion);
 
         log.info("WildFly {} instalado com sucesso em {}", targetVersion, wildflyHome);
@@ -197,6 +209,117 @@ public class WildflyProvisioner {
     }
 
     // ── privados ────────────────────────────────────────────────────────────────
+
+    /**
+     * Cria o usuário admin escrevendo diretamente no mgmt-users.properties,
+     * e grava as credenciais no {wildfly.home}/.env (lido pelos scripts de serviço
+     * via systemd/init.d/Windows service wrapper para exportar as variáveis de ambiente
+     * antes de iniciar o WildFly).
+     * Se as credenciais já existirem no .env do WildFly, não recria o usuário.
+     */
+    void setupManagementUser(Consumer<String> progress) {
+        Path wildflyEnvFile = Path.of(wildflyHome, ".env");
+        if (envFileHasMgmtCredentials(wildflyEnvFile)) {
+            log.debug("Credenciais de management já presentes em {} — não recriando usuário", wildflyEnvFile);
+            return;
+        }
+
+        String password = generatePassword(12);
+        try {
+            writeMgmtUserProperties(password);
+            appendWildflyEnvVars(wildflyEnvFile, password);
+            progress.accept("  Usuário admin criado na management API do WildFly");
+            log.info("Usuário admin configurado na management API; credenciais gravadas em {}", wildflyEnvFile);
+        } catch (Exception e) {
+            // Não impede o provisionamento — o driver lida com 401 sem credenciais
+            log.warn("Não foi possível criar usuário admin no WildFly: {}", e.getMessage());
+            progress.accept("  AVISO: falha ao criar usuário admin na management API: " + e.getMessage());
+        }
+    }
+
+    private boolean envFileHasMgmtCredentials(Path envFile) {
+        if (!Files.exists(envFile)) return false;
+        try {
+            String content = Files.readString(envFile);
+            return content.contains("WILDFLY_MGMT_USER=") && content.contains("WILDFLY_MGMT_PASSWORD=");
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    // Escreve o hash MD5(admin:ManagementRealm:password) diretamente no mgmt-users.properties.
+    // O add-user.sh não está presente no WildFly provisionado (slim), então usamos o mesmo
+    // algoritmo que ele usaria: HEX(MD5("username:realm:password")).
+    private void writeMgmtUserProperties(String password) throws ProvisioningException {
+        Path propsFile = Path.of(wildflyHome, "standalone", "configuration", "mgmt-users.properties");
+        if (!Files.exists(propsFile)) {
+            throw new ProvisioningException("mgmt-users.properties não encontrado em " + propsFile, null);
+        }
+        try {
+            String hash = md5Hex("admin:ManagementRealm:" + password);
+            String existing = Files.readString(propsFile);
+            // Remove entrada anterior de admin se existir
+            String cleaned = existing.lines()
+                    .filter(line -> !line.startsWith("admin="))
+                    .collect(java.util.stream.Collectors.joining("\n", "", "\n"));
+            Files.writeString(propsFile, cleaned + "admin=" + hash + "\n");
+        } catch (IOException e) {
+            throw new ProvisioningException("Falha ao escrever mgmt-users.properties: " + e.getMessage(), e);
+        }
+    }
+
+    static String md5Hex(String input) throws ProvisioningException {
+        try {
+            byte[] digest = MessageDigest.getInstance("MD5").digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(32);
+            for (byte b : digest) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new ProvisioningException("MD5 não disponível", e);
+        }
+    }
+
+    private void appendWildflyEnvVars(Path envFile, String mgmtPassword) throws ProvisioningException {
+        StringBuilder block = new StringBuilder();
+
+        // Banco de dados — derivado do .env do agente (DB_USERNAME → DB_USER conforme standalone.xml)
+        dbUrl.filter(v -> !v.isBlank()).ifPresent(v ->
+                block.append("\n# Banco de dados Oracle\n")
+                     .append("DB_URL=").append(v).append("\n"));
+        dbUsername.filter(v -> !v.isBlank()).ifPresent(v ->
+                block.append("DB_USER=").append(v).append("\n"));
+        dbPassword.filter(v -> !v.isBlank()).ifPresent(v ->
+                block.append("DB_PASSWORD=").append(v).append("\n"));
+
+        // Credenciais da management API
+        block.append("\n# Credenciais do usuário admin da management API (porta 9990)\n")
+             .append("WILDFLY_MGMT_USER=admin\n")
+             .append("WILDFLY_MGMT_PASSWORD=").append(mgmtPassword).append("\n");
+
+        try {
+            Files.createDirectories(envFile.getParent());
+            if (Files.exists(envFile)) {
+                Files.writeString(envFile, Files.readString(envFile) + block,
+                        java.nio.file.StandardOpenOption.WRITE,
+                        java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+            } else {
+                Files.writeString(envFile, block.toString().stripLeading());
+            }
+        } catch (IOException e) {
+            throw new ProvisioningException("Não foi possível gravar variáveis em " + envFile, e);
+        }
+    }
+
+    static String generatePassword(int length) {
+        // Caracteres seguros para senhas WildFly add-user: sem espaço, aspas ou $
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#!%&";
+        SecureRandom rng = new SecureRandom();
+        StringBuilder sb = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            sb.append(chars.charAt(rng.nextInt(chars.length())));
+        }
+        return sb.toString();
+    }
 
     private String resolveVersion(String desiredVersion) {
         return fixedVersion.filter(v -> !v.isBlank()).orElse(desiredVersion);

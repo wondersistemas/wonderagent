@@ -64,6 +64,8 @@ class WildflyDriverDetectStateTest {
         setField(driver, "startTimeoutSeconds", 1);
         setField(driver, "stopTimeoutSeconds", 1);
         setField(driver, "healthCheckUrl", "http://localhost:8080/probusweb/health");
+        setField(driver, "healthCheckTimeoutSeconds", 5);
+        setField(driver, "healthCheckRetries", 1);
         return driver;
     }
 
@@ -119,6 +121,17 @@ class WildflyDriverDetectStateTest {
 
         RuntimeState state = driverComPortaAberta().detectState();
         assertThat(state).isEqualTo(RuntimeState.PARTIAL);
+    }
+
+    @Test
+    void detectState_quandoManagementRetorna401SemCredenciais_retornaRunning() throws Exception {
+        managementServer.createContext("/management", exchange -> {
+            exchange.sendResponseHeaders(401, -1);
+            exchange.getResponseBody().close();
+        });
+
+        RuntimeState state = driverComPortaAberta().detectState();
+        assertThat(state).isEqualTo(RuntimeState.RUNNING);
     }
 
     @Test

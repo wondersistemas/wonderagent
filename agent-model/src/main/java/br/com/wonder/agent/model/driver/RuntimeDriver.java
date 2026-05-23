@@ -47,4 +47,14 @@ public interface RuntimeDriver {
 
     /** Verifica saúde da aplicação (endpoint HTTP, porta, etc.). */
     HealthStatus healthCheck();
+
+    /**
+     * Aguarda o health check passar com retry, para uso logo após deploy+start
+     * enquanto o runtime ainda está inicializando o artefato.
+     * Implementação padrão: uma única tentativa (sem retry).
+     * Drivers podem sobrescrever para retry configurável.
+     */
+    default HealthStatus healthCheckWithRetry() {
+        return healthCheck();
+    }
 }

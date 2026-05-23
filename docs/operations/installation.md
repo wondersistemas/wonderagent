@@ -56,7 +56,16 @@ WONDER_REPO_PASSWORD=senha-do-reposilite
 DB_URL=jdbc:oracle:thin:@//localhost:1521/ORCL
 DB_USERNAME=usuario
 DB_PASSWORD=senha
+
+# Modo de start/stop do WildFly (padrão: false)
+# false → standalone.sh / jboss-cli.sh diretamente (desenvolvimento/teste)
+# true  → serviço do SO: systemctl (Linux) ou sc (Windows)
+WILDFLY_SERVICE_MODE=true
 ```
+
+> **Credenciais do WildFly**: `WILDFLY_MGMT_USER` e `WILDFLY_MGMT_PASSWORD` são
+> geradas automaticamente pelo agente no primeiro `provision`. Não é necessário
+> configurá-las manualmente.
 
 Ver [configuration.md](configuration.md) para referência completa.
 

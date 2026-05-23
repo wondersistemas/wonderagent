@@ -43,7 +43,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
-        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+        when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.ok());
 
         DeployResult result = pipeline.execute(artifact);
 
@@ -61,7 +61,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
-        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+        when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.ok());
 
         DeployResult result = pipeline.execute(artifact);
 
@@ -78,7 +78,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
-        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+        when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.ok());
 
         pipeline.execute(artifact);
 
@@ -93,7 +93,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
-        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+        when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.ok());
 
         pipeline.execute(artifact);
 
@@ -140,7 +140,7 @@ class DeployPipelineTest {
 
         assertThat(result.success()).isFalse();
         assertThat(result.failureReason()).contains("timeout");
-        verify(driver, never()).healthCheck();
+        verify(driver, never()).healthCheckWithRetry();
     }
 
     @Test
@@ -150,7 +150,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
-        when(driver.healthCheck()).thenReturn(HealthStatus.unhealthy("HTTP 503"));
+        when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.unhealthy("HTTP 503"));
         when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
 
         DeployResult result = pipeline.execute(artifact);

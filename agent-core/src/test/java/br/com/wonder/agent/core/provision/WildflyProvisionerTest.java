@@ -51,6 +51,9 @@ class WildflyProvisionerTest {
         setField(provisioner, "tempDir", tempDir.toString());
         setField(provisioner, "wildflyHome", wildflyHome.toString());
         setField(provisioner, "fixedVersion", Optional.empty());
+        setField(provisioner, "dbUrl", Optional.empty());
+        setField(provisioner, "dbUsername", Optional.empty());
+        setField(provisioner, "dbPassword", Optional.empty());
         // Por padrão, resolveSnapshotValue retorna a versão sem alteração (simula release ou SNAPSHOT sem timestamp)
         when(metadataClient.resolveSnapshotValue(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenAnswer(inv -> inv.getArgument(4)); // retorna o argumento 'version'
@@ -390,6 +393,84 @@ class WildflyProvisionerTest {
         boolean result = provisioner.applyFromCache(VERSION, msg -> {});
 
         assertThat(result).isFalse();
+    }
+
+    // ── setupManagementUser ───────────────────────────────────────────────────
+
+    @Test
+    void setupManagementUser_quandoCredenciaisJaExistem_naoSobrescreve() throws Exception {
+        Path envFile = wildflyHome.resolve(".env");
+        Files.writeString(envFile, "WILDFLY_MGMT_USER=admin\nWILDFLY_MGMT_PASSWORD=existente\n");
+
+        provisioner.setupManagementUser(msg -> {});
+
+        assertThat(envFile).hasContent("WILDFLY_MGMT_USER=admin\nWILDFLY_MGMT_PASSWORD=existente\n");
+    }
+
+    @Test
+    void setupManagementUser_quandoMgmtUserPropsExiste_escreveHashEEnv() throws Exception {
+        Path configDir = wildflyHome.resolve("standalone/configuration");
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("mgmt-users.properties"),
+                "#$REALM_NAME=ManagementRealm$\n");
+
+        provisioner.setupManagementUser(msg -> {});
+
+        String props = Files.readString(configDir.resolve("mgmt-users.properties"));
+        assertThat(props).contains("admin=");
+        String env = Files.readString(wildflyHome.resolve(".env"));
+        assertThat(env).contains("WILDFLY_MGMT_USER=admin");
+        assertThat(env).contains("WILDFLY_MGMT_PASSWORD=");
+    }
+
+    @Test
+    void setupManagementUser_quandoDbConfigurado_escreveVariaveisNoBanco() throws Exception {
+        Path configDir = wildflyHome.resolve("standalone/configuration");
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("mgmt-users.properties"), "#$REALM_NAME=ManagementRealm$\n");
+        setField(provisioner, "dbUrl", Optional.of("jdbc:oracle:thin:@//192.168.0.74:1521/DESENV"));
+        setField(provisioner, "dbUsername", Optional.of("wonder"));
+        setField(provisioner, "dbPassword", Optional.of("wonder"));
+
+        provisioner.setupManagementUser(msg -> {});
+
+        String env = Files.readString(wildflyHome.resolve(".env"));
+        assertThat(env).contains("DB_URL=jdbc:oracle:thin:@//192.168.0.74:1521/DESENV");
+        assertThat(env).contains("DB_USER=wonder");
+        assertThat(env).contains("DB_PASSWORD=wonder");
+        // DB_USERNAME não deve aparecer — WildFly usa DB_USER
+        assertThat(env).doesNotContain("DB_USERNAME");
+    }
+
+    @Test
+    void setupManagementUser_quandoMgmtUserPropsAusente_naoLancaExcecao() {
+        // mgmt-users.properties não existe — deve absorver silenciosamente
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> provisioner.setupManagementUser(msg -> {}));
+    }
+
+    // ── md5Hex ────────────────────────────────────────────────────────────────
+
+    @Test
+    void md5Hex_retornaHashCorreto() throws Exception {
+        // Valor de referência: MD5("admin:ManagementRealm:admin") = valor conhecido
+        assertThat(WildflyProvisioner.md5Hex("admin:ManagementRealm:admin"))
+                .isEqualTo("c22052286cd5d72239a90fe193737253");
+    }
+
+    // ── generatePassword ──────────────────────────────────────────────────────
+
+    @Test
+    void generatePassword_retornaSenhaComComprimentoCorreto() {
+        assertThat(WildflyProvisioner.generatePassword(12)).hasSize(12);
+    }
+
+    @Test
+    void generatePassword_naoContemCaracteresProibidos() {
+        for (int i = 0; i < 50; i++) {
+            String pwd = WildflyProvisioner.generatePassword(12);
+            assertThat(pwd).doesNotContain(" ", "\"", "'", "$", "\\");
+        }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

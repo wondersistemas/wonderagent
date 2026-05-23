@@ -59,7 +59,7 @@ public class DeployPipeline {
                     "Runtime não iniciou dentro do timeout após deploy");
         }
 
-        HealthStatus health = driver.healthCheck();
+        HealthStatus health = driver.healthCheckWithRetry();
         if (!health.healthy()) {
             return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
                     stateBefore, driver.detectState(),

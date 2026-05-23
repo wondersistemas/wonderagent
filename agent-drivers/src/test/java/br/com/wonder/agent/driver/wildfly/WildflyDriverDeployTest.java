@@ -30,6 +30,8 @@ class WildflyDriverDeployTest {
         setField(driver, "startTimeoutSeconds", 1);
         setField(driver, "stopTimeoutSeconds", 1);
         setField(driver, "healthCheckUrl", "http://localhost:8080/probusweb/health");
+        setField(driver, "healthCheckTimeoutSeconds", 5);
+        setField(driver, "healthCheckRetries", 1);
     }
 
     Artifact artifact(Path localFile) {

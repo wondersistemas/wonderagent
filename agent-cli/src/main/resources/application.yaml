@@ -63,6 +63,15 @@ driver:
     start-timeout-seconds: 180
     stop-timeout-seconds: 60
     health-check-url: "http://localhost:8080/probusweb/health"
+    # Cada tentativa aguarda este timeout para conexão e leitura da resposta HTTP.
+    # Entre tentativas há uma pausa fixa de 10s.
+    # Tempo total máximo de espera ≈ retries × (timeout + 10s)
+    health-check-timeout-seconds: 10
+    health-check-retries: 6
+    # false (padrão): inicia/para via standalone.sh e jboss-cli.sh diretamente (dev/teste)
+    # true (produção): delega ao serviço do SO — systemctl no Linux, sc no Windows
+    # Configurar em .env: WILDFLY_SERVICE_MODE=true
+    service-mode: "${WILDFLY_SERVICE_MODE:false}"
 
 download:
   temp-dir: "${agent.home}/downloads"

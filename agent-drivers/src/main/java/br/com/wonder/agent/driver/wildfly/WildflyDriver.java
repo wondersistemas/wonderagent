@@ -12,13 +12,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
+import java.net.Authenticator;
 import java.net.HttpURLConnection;
+import java.net.PasswordAuthentication;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
@@ -55,6 +58,15 @@ public class WildflyDriver implements RuntimeDriver {
 
     @ConfigProperty(name = "driver.wildfly.health-check-url")
     String healthCheckUrl;
+
+    @ConfigProperty(name = "driver.wildfly.health-check-timeout-seconds", defaultValue = "10")
+    int healthCheckTimeoutSeconds;
+
+    @ConfigProperty(name = "driver.wildfly.health-check-retries", defaultValue = "6")
+    int healthCheckRetries;
+
+    @ConfigProperty(name = "driver.wildfly.service-mode", defaultValue = "false")
+    boolean serviceMode;
 
     @Override
     public String getRuntimeType() {
@@ -136,14 +148,25 @@ public class WildflyDriver implements RuntimeDriver {
 
     @Override
     public boolean start() {
+        if (!serviceMode && !Files.exists(Path.of(wildflyHome, "jboss-modules.jar"))) {
+            log.error("WildFly não encontrado em {} — execute 'provision' antes de fazer deploy", wildflyHome);
+            return false;
+        }
         try {
-            String[] cmd = isLinux()
-                    ? new String[]{"bash", "-c",
-                        "nohup " + wildflyHome + "/bin/standalone.sh > /dev/null 2>&1 &"}
-                    : new String[]{wildflyHome + "/bin/standalone.bat"};
-            new ProcessBuilder(cmd)
-                    .directory(Path.of(wildflyHome).toFile())
-                    .start();
+            ProcessBuilder pb;
+            if (serviceMode) {
+                pb = isLinux()
+                        ? new ProcessBuilder("systemctl", "start", "wildfly")
+                        : new ProcessBuilder("sc", "start", "WildFly");
+            } else if (isLinux()) {
+                String envExports = buildEnvExports();
+                pb = new ProcessBuilder("bash", "-c",
+                        envExports + "nohup " + wildflyHome + "/bin/standalone.sh > /dev/null 2>&1 &");
+            } else {
+                pb = new ProcessBuilder(wildflyHome + "/bin/standalone.bat");
+                loadWildflyEnvInto(pb.environment());
+            }
+            pb.directory(Path.of(wildflyHome).toFile()).start();
             return waitForState(RuntimeState.RUNNING, startTimeoutSeconds);
         } catch (IOException e) {
             log.error("Falha ao iniciar WildFly: {}", e.getMessage());
@@ -154,13 +177,19 @@ public class WildflyDriver implements RuntimeDriver {
     @Override
     public boolean stop() {
         try {
-            String[] cmd = isLinux()
-                    ? new String[]{"bash", wildflyHome + "/bin/jboss-cli.sh",
-                        "--connect", "--command=:shutdown"}
-                    : new String[]{wildflyHome + "/bin/jboss-cli.bat",
-                        "--connect", "--command=:shutdown"};
-            Process p = new ProcessBuilder(cmd).start();
-            p.waitFor();
+            ProcessBuilder pb;
+            if (serviceMode) {
+                pb = isLinux()
+                        ? new ProcessBuilder("systemctl", "stop", "wildfly")
+                        : new ProcessBuilder("sc", "stop", "WildFly");
+            } else {
+                pb = isLinux()
+                        ? new ProcessBuilder(wildflyHome + "/bin/jboss-cli.sh",
+                                "--connect", "--command=:shutdown")
+                        : new ProcessBuilder(wildflyHome + "/bin/jboss-cli.bat",
+                                "--connect", "--command=:shutdown");
+            }
+            pb.start().waitFor();
             return waitForState(RuntimeState.STOPPED, stopTimeoutSeconds);
         } catch (Exception e) {
             log.error("Falha ao parar WildFly: {}", e.getMessage());
@@ -183,16 +212,34 @@ public class WildflyDriver implements RuntimeDriver {
 
     @Override
     public HealthStatus healthCheck() {
+        int timeoutMs = healthCheckTimeoutSeconds * 1000;
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(healthCheckUrl).toURL().openConnection();
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(5000);
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
             int code = conn.getResponseCode();
             if (code == 200) return HealthStatus.ok();
             return HealthStatus.unhealthy("HTTP " + code);
         } catch (Exception e) {
             return HealthStatus.unhealthy("Health check falhou: " + e.getMessage());
         }
+    }
+
+    /**
+     * Aguarda o health check passar com retry, para uso logo após deploy+start.
+     * Entre tentativas há uma pausa fixa de 10s.
+     */
+    public HealthStatus healthCheckWithRetry() {
+        HealthStatus last = HealthStatus.unhealthy("nenhuma tentativa realizada");
+        for (int attempt = 1; attempt <= healthCheckRetries; attempt++) {
+            last = healthCheck();
+            if (last.healthy()) return last;
+            log.debug("Health check tentativa {}/{} falhou: {}", attempt, healthCheckRetries, last.details());
+            if (attempt < healthCheckRetries) {
+                try { Thread.sleep(10_000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return last; }
+            }
+        }
+        return last;
     }
 
     // ── Métodos privados ──────────────────────────────────────────────────────
@@ -232,12 +279,90 @@ public class WildflyDriver implements RuntimeDriver {
     private String queryManagementApi(String attribute) throws IOException {
         String url = "http://localhost:" + managementPort
                 + "/management?operation=attribute&name=" + attribute;
+        HttpURLConnection conn = openManagementConnection(url);
+        int code = conn.getResponseCode();
+        if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
+            // WildFly com autenticação habilitada mas sem credenciais configuradas —
+            // 401 prova que o servidor está vivo e respondendo normalmente.
+            return "running";
+        }
+        return new String(conn.getInputStream().readAllBytes())
+                .replaceAll("\"", "").trim();
+    }
+
+    private HttpURLConnection openManagementConnection(String url) throws IOException {
+        Optional<String> user = readWildflyEnvVar("WILDFLY_MGMT_USER");
+        Optional<String> pass = readWildflyEnvVar("WILDFLY_MGMT_PASSWORD");
         HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
         conn.setConnectTimeout(3000);
         conn.setReadTimeout(3000);
-        String body = new String(conn.getInputStream().readAllBytes())
-                .replaceAll("\"", "").trim();
-        return body;
+        if (user.isPresent() && pass.isPresent()) {
+            String u = user.get();
+            char[] p = pass.get().toCharArray();
+            Authenticator.setDefault(new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    return new PasswordAuthentication(u, p);
+                }
+            });
+        }
+        return conn;
+    }
+
+    // Monta string de exports shell a partir do {wildfly.home}/.env para uso no comando nohup.
+    // Cada linha vira: export KEY='VALUE' (aspas simples escapam qualquer caractere especial).
+    private String buildEnvExports() {
+        Path envFile = Path.of(wildflyHome, ".env");
+        if (!Files.exists(envFile)) return "";
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (String line : Files.readAllLines(envFile)) {
+                if (line.startsWith("#") || line.isBlank()) continue;
+                int eq = line.indexOf('=');
+                if (eq <= 0) continue;
+                String key = line.substring(0, eq).trim();
+                String val = line.substring(eq + 1).trim().replace("'", "'\\''");
+                sb.append("export ").append(key).append("='").append(val).append("'; ");
+            }
+            return sb.toString();
+        } catch (IOException e) {
+            log.warn("Não foi possível ler {} para exports: {}", envFile, e.getMessage());
+            return "";
+        }
+    }
+
+    // Carrega o {wildfly.home}/.env no mapa de ambiente do ProcessBuilder (Windows).
+    private void loadWildflyEnvInto(java.util.Map<String, String> env) {
+        Path envFile = Path.of(wildflyHome, ".env");
+        if (!Files.exists(envFile)) return;
+        try {
+            for (String line : Files.readAllLines(envFile)) {
+                if (line.startsWith("#") || line.isBlank()) continue;
+                int eq = line.indexOf('=');
+                if (eq <= 0) continue;
+                env.put(line.substring(0, eq).trim(), line.substring(eq + 1).trim());
+            }
+        } catch (IOException e) {
+            log.warn("Não foi possível carregar {} no ambiente do processo: {}", envFile, e.getMessage());
+        }
+    }
+
+    // Lê uma variável do {wildfly.home}/.env (formato KEY=VALUE, linhas com # ignoradas).
+    private Optional<String> readWildflyEnvVar(String key) {
+        Path envFile = Path.of(wildflyHome, ".env");
+        if (!Files.exists(envFile)) return Optional.empty();
+        try {
+            for (String line : Files.readAllLines(envFile)) {
+                if (line.startsWith("#") || line.isBlank()) continue;
+                int eq = line.indexOf('=');
+                if (eq > 0 && line.substring(0, eq).trim().equals(key)) {
+                    return Optional.of(line.substring(eq + 1).trim());
+                }
+            }
+        } catch (IOException e) {
+            log.warn("Não foi possível ler {}: {}", envFile, e.getMessage());
+        }
+        return Optional.empty();
     }
 
     private boolean hasFailedDeployment() {
@@ -245,10 +370,9 @@ public class WildflyDriver implements RuntimeDriver {
             String url = "http://localhost:" + managementPort
                     + "/management/deployment/" + artifactName
                     + "?operation=attribute&name=status";
-            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-            conn.setConnectTimeout(3000);
-            conn.setReadTimeout(3000);
-            if (conn.getResponseCode() == 404) return false;
+            HttpURLConnection conn = openManagementConnection(url);
+            int code = conn.getResponseCode();
+            if (code == 404 || code == HttpURLConnection.HTTP_UNAUTHORIZED) return false;
             String status = new String(conn.getInputStream().readAllBytes())
                     .replaceAll("\"", "").trim();
             return "FAILED".equals(status);
