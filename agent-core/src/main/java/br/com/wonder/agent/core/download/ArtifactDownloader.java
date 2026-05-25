@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -34,10 +35,14 @@ public class ArtifactDownloader {
     private final Zsync zsync;
 
     ArtifactDownloader() {
-        OkHttpClient http = new OkHttpClient();
-        http.setReadTimeout(30, TimeUnit.SECONDS);
-        http.setWriteTimeout(30, TimeUnit.SECONDS);
-        this.zsync = new Zsync(http);
+        // zsync4j usa SimpleDateFormat sem Locale para parsear MTime — bug da biblioteca.
+        // Forçar Locale.ENGLISH garante que nomes de mês RFC 2822 sejam reconhecidos.
+        // Impacto mínimo: o agente é um processo dedicado, não um servidor multi-tenant.
+        Locale.setDefault(Locale.ENGLISH);
+        OkHttpClient client = new OkHttpClient();
+        client.setReadTimeout(30, TimeUnit.SECONDS);
+        client.setWriteTimeout(30, TimeUnit.SECONDS);
+        this.zsync = new Zsync(client);
     }
 
     ArtifactDownloader(Zsync zsync) {

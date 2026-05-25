@@ -95,7 +95,7 @@ public class WildflyDriver implements RuntimeDriver {
             }
             return RuntimeState.RUNNING;
         } catch (Exception e) {
-            log.warn("Erro ao detectar estado do WildFly: {}", e.getMessage());
+            log.error("Erro ao detectar estado do WildFly — retornando UNKNOWN: {}", e.getMessage(), e);
             return RuntimeState.UNKNOWN;
         }
     }
@@ -152,6 +152,7 @@ public class WildflyDriver implements RuntimeDriver {
             log.error("WildFly não encontrado em {} — execute 'provision' antes de fazer deploy", wildflyHome);
             return false;
         }
+        log.info("Iniciando WildFly (timeout={}s, home={})", startTimeoutSeconds, wildflyHome);
         try {
             ProcessBuilder pb;
             if (serviceMode) {
@@ -167,15 +168,20 @@ public class WildflyDriver implements RuntimeDriver {
                 loadWildflyEnvInto(pb.environment());
             }
             pb.directory(Path.of(wildflyHome).toFile()).start();
-            return waitForState(RuntimeState.RUNNING, startTimeoutSeconds);
+            boolean started = waitForState(RuntimeState.RUNNING, startTimeoutSeconds);
+            if (!started) {
+                log.error("WildFly não atingiu estado RUNNING em {}s — estado atual: {}", startTimeoutSeconds, detectState());
+            }
+            return started;
         } catch (IOException e) {
-            log.error("Falha ao iniciar WildFly: {}", e.getMessage());
+            log.error("Falha ao iniciar WildFly (home={}): {}", wildflyHome, e.getMessage(), e);
             return false;
         }
     }
 
     @Override
     public boolean stop() {
+        log.info("Parando WildFly (timeout={}s, serviceMode={})", stopTimeoutSeconds, serviceMode);
         try {
             ProcessBuilder pb;
             if (serviceMode) {
@@ -190,22 +196,34 @@ public class WildflyDriver implements RuntimeDriver {
                                 "--connect", "--command=:shutdown");
             }
             pb.start().waitFor();
-            return waitForState(RuntimeState.STOPPED, stopTimeoutSeconds);
+            boolean stopped = waitForState(RuntimeState.STOPPED, stopTimeoutSeconds);
+            if (!stopped) {
+                log.error("WildFly não atingiu estado STOPPED em {}s — estado atual: {}", stopTimeoutSeconds, detectState());
+            }
+            return stopped;
         } catch (Exception e) {
-            log.error("Falha ao parar WildFly: {}", e.getMessage());
+            log.error("Falha ao parar WildFly: {}", e.getMessage(), e);
             return false;
         }
     }
 
     @Override
     public boolean forceKill() {
+        OptionalLong pid = findWildflyPid();
+        if (pid.isPresent()) {
+            log.warn("forceKill: matando processo WildFly PID={}", pid.getAsLong());
+        } else {
+            log.warn("forceKill: nenhum processo WildFly encontrado (pode já estar parado)");
+        }
         try {
-            findWildflyPid().ifPresent(pid ->
-                ProcessHandle.of(pid).ifPresent(ProcessHandle::destroyForcibly)
-            );
-            return waitForState(RuntimeState.STOPPED, 15);
+            pid.ifPresent(p -> ProcessHandle.of(p).ifPresent(ProcessHandle::destroyForcibly));
+            boolean stopped = waitForState(RuntimeState.STOPPED, 15);
+            if (!stopped) {
+                log.error("forceKill: processo não terminou em 15s — PID={}", pid.isPresent() ? pid.getAsLong() : "desconhecido");
+            }
+            return stopped;
         } catch (Exception e) {
-            log.error("forceKill falhou: {}", e.getMessage());
+            log.error("forceKill falhou: {}", e.getMessage(), e);
             return false;
         }
     }
@@ -233,12 +251,16 @@ public class WildflyDriver implements RuntimeDriver {
         HealthStatus last = HealthStatus.unhealthy("nenhuma tentativa realizada");
         for (int attempt = 1; attempt <= healthCheckRetries; attempt++) {
             last = healthCheck();
-            if (last.healthy()) return last;
-            log.debug("Health check tentativa {}/{} falhou: {}", attempt, healthCheckRetries, last.details());
+            if (last.healthy()) {
+                log.info("Health check OK na tentativa {}/{}", attempt, healthCheckRetries);
+                return last;
+            }
+            log.warn("Health check tentativa {}/{} falhou: {} — url={}", attempt, healthCheckRetries, last.details(), healthCheckUrl);
             if (attempt < healthCheckRetries) {
                 try { Thread.sleep(10_000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return last; }
             }
         }
+        log.error("Health check falhou em todas as {} tentativas — última falha: {}", healthCheckRetries, last.details());
         return last;
     }
 
@@ -383,10 +405,17 @@ public class WildflyDriver implements RuntimeDriver {
 
     private boolean waitForState(RuntimeState expected, int timeoutSeconds) {
         long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+        RuntimeState last = null;
         while (System.currentTimeMillis() < deadline) {
-            if (detectState() == expected) return true;
+            RuntimeState current = detectState();
+            if (current != last) {
+                log.debug("waitForState: estado={} aguardando={}", current, expected);
+                last = current;
+            }
+            if (current == expected) return true;
             try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
         }
+        log.warn("waitForState: timeout após {}s aguardando {} — estado atual: {}", timeoutSeconds, expected, last);
         return false;
     }
 }

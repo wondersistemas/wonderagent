@@ -24,6 +24,8 @@ quarkus:
       url: "${agent.central-url:https://deploy.wonder.com.br}"
       headers:
         Authorization: "Bearer ${agent.jwt-token:}"
+      connect-timeout: 10000
+      read-timeout: 30000
 
   datasource:
     # Conexão Oracle para leitura de gerenciador.id_versaodb.
@@ -39,7 +41,7 @@ quarkus:
       url: "${DB_URL:}"
 
   log:
-    level: WARN
+    level: INFO
     console:
       enable: true
     file:

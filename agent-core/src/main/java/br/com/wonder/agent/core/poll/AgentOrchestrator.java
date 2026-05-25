@@ -139,7 +139,7 @@ public class AgentOrchestrator {
 
         } catch (Exception e) {
             log.error("Erro ao verificar atualização", e);
-            progress.accept("ERRO: " + e.getMessage());
+            progress.accept("ERRO: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
             return java.util.Optional.empty();
         }
     }
@@ -160,8 +160,8 @@ public class AgentOrchestrator {
             }
             reportStatus(finalVersion, result);
         } catch (Exception e) {
-            log.error("Erro ao fazer deploy", e);
-            progress.accept("ERRO: " + e.getMessage());
+            log.error("Erro inesperado ao fazer deploy da versão {}", artifact.version(), e);
+            progress.accept("ERRO: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
         }
     }
 
@@ -185,10 +185,18 @@ public class AgentOrchestrator {
                 dbVersion
         );
 
-        centralClient.reportStatus(clientId, report);
+        try {
+            centralClient.reportStatus(clientId, report);
+        } catch (Exception e) {
+            log.warn("Falha ao reportar status ao servidor central: {}", e.getMessage());
+        }
 
         if (lastResult != null && !lastResult.success()) {
-            centralClient.reportDeployResult(clientId, lastResult);
+            try {
+                centralClient.reportDeployResult(clientId, lastResult);
+            } catch (Exception e) {
+                log.warn("Falha ao reportar resultado de deploy ao servidor central: {}", e.getMessage());
+            }
         }
     }
 

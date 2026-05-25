@@ -31,12 +31,14 @@ public class DeployPipeline {
 
     public DeployResult execute(Artifact artifact) {
         Instant start = Instant.now();
+        log.info("Iniciando deploy: versão={} artefato={}", artifact.version(), artifact.artifactId());
         RuntimeState stateBefore = stateMachine.detectAndRecover();
 
         if (!stateMachine.canDeploy(stateBefore)) {
+            String reason = "Estado inicial não permite deploy: " + stateBefore;
+            log.error("Deploy abortado — {}", reason);
             return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
-                    stateBefore, stateBefore,
-                    "Estado inicial não permite deploy: " + stateBefore);
+                    stateBefore, stateBefore, reason);
         }
 
         if (stateBefore == RuntimeState.RUNNING || stateBefore == RuntimeState.UP_TO_DATE) {
@@ -49,25 +51,28 @@ public class DeployPipeline {
 
         DeployResult deployResult = driver.deploy(artifact);
         if (!deployResult.success()) {
+            log.error("Falha ao copiar artefato para deploy: {}", deployResult.failureReason());
             return deployResult;
         }
 
         log.info("Iniciando runtime após deploy");
         if (!driver.start()) {
+            String reason = "Runtime não iniciou dentro do timeout após deploy";
+            log.error("Deploy falhou — {} (versão={})", reason, artifact.version());
             return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
-                    stateBefore, driver.detectState(),
-                    "Runtime não iniciou dentro do timeout após deploy");
+                    stateBefore, driver.detectState(), reason);
         }
 
         HealthStatus health = driver.healthCheckWithRetry();
         if (!health.healthy()) {
+            String reason = "Health check falhou após deploy: " + health.details();
+            log.error("Deploy falhou — {} (versão={})", reason, artifact.version());
             return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
-                    stateBefore, driver.detectState(),
-                    "Health check falhou após deploy: " + health.details());
+                    stateBefore, driver.detectState(), reason);
         }
 
-        log.info("Deploy concluído com sucesso: {}", artifact.version());
-        return DeployResult.success(artifact.version(), Duration.between(start, Instant.now()),
-                stateBefore, RuntimeState.RUNNING);
+        Duration elapsed = Duration.between(start, Instant.now());
+        log.info("Deploy concluído com sucesso: versão={} duração={}s", artifact.version(), elapsed.toSeconds());
+        return DeployResult.success(artifact.version(), elapsed, stateBefore, RuntimeState.RUNNING);
     }
 }
