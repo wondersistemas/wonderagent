@@ -106,13 +106,35 @@ class WildflyDriverDetectStateTest {
     @Test
     void detectState_quandoDeploymentFalhou_retornaPartial() throws Exception {
         managementServer.createContext("/management", exchange -> {
-            String path = exchange.getRequestURI().getPath();
             String query = exchange.getRequestURI().getQuery();
             byte[] body;
-            if (path.equals("/management") && query != null && query.contains("server-state")) {
+            if (query != null && query.contains("server-state")) {
                 body = "\"running\"".getBytes();
-            } else {
+            } else if (query != null && query.contains("name=status")) {
                 body = "\"FAILED\"".getBytes();
+            } else {
+                body = "1000".getBytes();
+            }
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.getResponseBody().close();
+        });
+
+        RuntimeState state = driverComPortaAberta().detectState();
+        assertThat(state).isEqualTo(RuntimeState.PARTIAL);
+    }
+
+    @Test
+    void detectState_quandoDeploymentStopped_retornaPartial() throws Exception {
+        managementServer.createContext("/management", exchange -> {
+            String query = exchange.getRequestURI().getQuery();
+            byte[] body;
+            if (query != null && query.contains("server-state")) {
+                body = "\"running\"".getBytes();
+            } else if (query != null && query.contains("name=status")) {
+                body = "\"STOPPED\"".getBytes();
+            } else {
+                body = "1000".getBytes();
             }
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);

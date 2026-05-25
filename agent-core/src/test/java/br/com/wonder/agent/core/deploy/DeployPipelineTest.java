@@ -18,6 +18,7 @@ import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,6 +44,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
+        when(driver.waitForDeploymentReady(any(), anyInt())).thenReturn(true);
         when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.ok());
 
         DeployResult result = pipeline.execute(artifact);
@@ -61,6 +63,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
+        when(driver.waitForDeploymentReady(any(), anyInt())).thenReturn(true);
         when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.ok());
 
         DeployResult result = pipeline.execute(artifact);
@@ -78,6 +81,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
+        when(driver.waitForDeploymentReady(any(), anyInt())).thenReturn(true);
         when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.ok());
 
         pipeline.execute(artifact);
@@ -93,6 +97,7 @@ class DeployPipelineTest {
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
+        when(driver.waitForDeploymentReady(any(), anyInt())).thenReturn(true);
         when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.ok());
 
         pipeline.execute(artifact);
@@ -144,12 +149,30 @@ class DeployPipelineTest {
     }
 
     @Test
+    void execute_quandoScannerNaoConfirma_retornaFalhaSemHealthCheck() {
+        when(stateMachine.detectAndRecover()).thenReturn(RuntimeState.STOPPED);
+        when(stateMachine.canDeploy(RuntimeState.STOPPED)).thenReturn(true);
+        when(driver.deploy(artifact)).thenReturn(
+                DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
+        when(driver.start()).thenReturn(true);
+        when(driver.waitForDeploymentReady(any(), anyInt())).thenReturn(false);
+        when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
+
+        DeployResult result = pipeline.execute(artifact);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.failureReason()).contains("scanner");
+        verify(driver, never()).healthCheckWithRetry();
+    }
+
+    @Test
     void execute_quandoHealthCheckFalha_retornaFalha() {
         when(stateMachine.detectAndRecover()).thenReturn(RuntimeState.STOPPED);
         when(stateMachine.canDeploy(RuntimeState.STOPPED)).thenReturn(true);
         when(driver.deploy(artifact)).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(1), RuntimeState.STOPPED, RuntimeState.STOPPED));
         when(driver.start()).thenReturn(true);
+        when(driver.waitForDeploymentReady(any(), anyInt())).thenReturn(true);
         when(driver.healthCheckWithRetry()).thenReturn(HealthStatus.unhealthy("HTTP 503"));
         when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
 

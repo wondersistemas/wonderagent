@@ -55,9 +55,21 @@ public class DeployPipeline {
             return deployResult;
         }
 
+        // Âncora capturada imediatamente antes do start(): o enabled-time aceito pelo
+        // scanner deve ser posterior a este instante, não ao Files.copy() que ocorreu
+        // antes do processo WildFly existir — evita aceitar resultado de deploy anterior.
+        Instant startedAt = Instant.now();
         log.info("Iniciando runtime após deploy");
         if (!driver.start()) {
             String reason = "Runtime não iniciou dentro do timeout após deploy";
+            log.error("Deploy falhou — {} (versão={})", reason, artifact.version());
+            return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
+                    stateBefore, driver.detectState(), reason);
+        }
+
+        log.info("Aguardando confirmação do scanner para versão={}", artifact.version());
+        if (!driver.waitForDeploymentReady(startedAt, 120)) {
+            String reason = "Deployment scanner não confirmou artefato dentro do timeout";
             log.error("Deploy falhou — {} (versão={})", reason, artifact.version());
             return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
                     stateBefore, driver.detectState(), reason);

@@ -4,6 +4,7 @@ import br.com.wonder.agent.central.CentralClient;
 import br.com.wonder.agent.core.db.DatabaseVersionReader;
 import br.com.wonder.agent.core.deploy.DeployPipeline;
 import br.com.wonder.agent.core.download.ArtifactDownloader;
+import br.com.wonder.agent.core.download.ZsyncChecksumReader;
 import br.com.wonder.agent.core.provision.WildflyProvisioner;
 import br.com.wonder.agent.model.config.AgentStatusReport;
 import br.com.wonder.agent.model.config.DesiredState;
@@ -37,6 +38,7 @@ class AgentOrchestratorTest {
     @Mock ArtifactDownloader artifactDownloader;
     @Mock WildflyProvisioner wildflyProvisioner;
     @Mock DatabaseVersionReader databaseVersionReader;
+    @Mock ZsyncChecksumReader zsyncChecksumReader;
     @InjectMocks AgentOrchestrator orchestrator;
 
     DesiredState desiredState;
@@ -65,11 +67,100 @@ class AgentOrchestratorTest {
         when(driver.getInstalledVersion()).thenReturn("2.5.0");
         when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
         when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+        // checksum indisponível → confia na versão
+        when(zsyncChecksumReader.readSha1(any())).thenReturn(java.util.Optional.empty());
 
         orchestrator.poll();
 
         verify(deployPipeline, never()).execute(any());
         verify(centralClient).reportStatus(eq("cliente-abc"), any(AgentStatusReport.class));
+    }
+
+    @Test
+    void poll_quandoVersaoIgualEChecksumConfere_naoFazDeploy() throws Exception {
+        String sha1 = "4e1243bd22c66e76c2ba9eddc1f91394e57f9f83";
+        when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
+        when(driver.getInstalledVersion()).thenReturn("2.5.0");
+        when(driver.getInstalledChecksum()).thenReturn(java.util.Optional.of(sha1));
+        when(zsyncChecksumReader.readSha1(any())).thenReturn(java.util.Optional.of(sha1));
+        when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
+        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+
+        orchestrator.poll();
+
+        verify(deployPipeline, never()).execute(any());
+    }
+
+    @Test
+    void poll_quandoVersaoIgualMasChecksumDiverge_forcaDownloadEDeploy() throws Exception {
+        when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
+        when(driver.getInstalledVersion()).thenReturn("2.5.0").thenReturn("2.5.0");
+        when(driver.getInstalledChecksum()).thenReturn(java.util.Optional.of("checksum-corrompido"));
+        when(zsyncChecksumReader.readSha1(any())).thenReturn(java.util.Optional.of("checksum-remoto-correto"));
+        when(artifactDownloader.download(any(), any())).thenAnswer(inv ->
+                ((Artifact) inv.getArgument(0)).withLocalFile(java.nio.file.Path.of("/tmp/wnfe-war-2.5.0.war")));
+        when(deployPipeline.execute(any())).thenReturn(
+                DeployResult.success("2.5.0", java.time.Duration.ofSeconds(10),
+                        RuntimeState.STOPPED, RuntimeState.RUNNING));
+        when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
+        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+
+        orchestrator.poll();
+
+        verify(artifactDownloader).download(any(), any());
+        verify(deployPipeline).execute(any());
+    }
+
+    @Test
+    void poll_quandoVersaoIgualEChecksumRemotoIndisponivel_naoFazDeploy() throws Exception {
+        when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
+        when(driver.getInstalledVersion()).thenReturn("2.5.0");
+        when(driver.getInstalledChecksum()).thenReturn(java.util.Optional.of("sha1-local"));
+        when(zsyncChecksumReader.readSha1(any())).thenReturn(java.util.Optional.empty());
+        when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
+        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+
+        orchestrator.poll();
+
+        verify(deployPipeline, never()).execute(any());
+    }
+
+    @Test
+    void poll_quandoVersaoIgualEChecksumLocalAusenteECacheAusente_forcaDownloadEDeploy() throws Exception {
+        when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
+        when(driver.getInstalledVersion()).thenReturn("2.5.0").thenReturn("2.5.0");
+        when(driver.getInstalledChecksum()).thenReturn(java.util.Optional.empty());
+        when(artifactDownloader.readCachedSha1(any())).thenReturn(java.util.Optional.empty());
+        when(zsyncChecksumReader.readSha1(any())).thenReturn(java.util.Optional.of("checksum-remoto"));
+        when(artifactDownloader.download(any(), any())).thenAnswer(inv ->
+                ((Artifact) inv.getArgument(0)).withLocalFile(java.nio.file.Path.of("/tmp/wnfe-war-2.5.0.war")));
+        when(deployPipeline.execute(any())).thenReturn(
+                DeployResult.success("2.5.0", java.time.Duration.ofSeconds(10),
+                        RuntimeState.STOPPED, RuntimeState.RUNNING));
+        when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
+        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+
+        orchestrator.poll();
+
+        verify(artifactDownloader).download(any(), any());
+        verify(deployPipeline).execute(any());
+    }
+
+    @Test
+    void poll_quandoVersaoIgualEChecksumLocalAusenteMasCacheConfere_naoFazDownload() throws Exception {
+        String sha1 = "abc123";
+        when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
+        when(driver.getInstalledVersion()).thenReturn("2.5.0");
+        when(driver.getInstalledChecksum()).thenReturn(java.util.Optional.empty());
+        when(artifactDownloader.readCachedSha1(any())).thenReturn(java.util.Optional.of(sha1));
+        when(zsyncChecksumReader.readSha1(any())).thenReturn(java.util.Optional.of(sha1));
+        when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
+        when(driver.healthCheck()).thenReturn(HealthStatus.ok());
+
+        orchestrator.poll();
+
+        verify(artifactDownloader, never()).download(any(), any());
+        verify(deployPipeline, never()).execute(any());
     }
 
     @Test

@@ -52,11 +52,30 @@ public class WonderAgentCommand implements Runnable {
 
     @Inject AgentOrchestrator orchestrator;
 
+    @Option(names = "--trace", description = "Ativa log no nível TRACE para diagnóstico detalhado",
+            hidden = true) // lido em Main.run() antes do CDI — mantido aqui só para o parser aceitar o arg
+    boolean trace;
+
     @Override
     public void run() {
         log.info("Iniciando WonderAgent em modo serviço");
         orchestrator.startServiceMode();
         // O scheduler do Quarkus mantém o processo vivo
+    }
+
+    static void enableTrace(boolean trace) {
+        if (!trace) return;
+        org.jboss.logmanager.LogContext ctx = org.jboss.logmanager.LogContext.getLogContext();
+        org.jboss.logmanager.Logger root = ctx.getLogger("");
+        root.setLevel(org.jboss.logmanager.Level.TRACE);
+        for (java.util.logging.Handler h : root.getHandlers()) {
+            if (h instanceof org.jboss.logmanager.ExtHandler eh) {
+                eh.setLevel(org.jboss.logmanager.Level.TRACE);
+            } else {
+                h.setLevel(java.util.logging.Level.FINEST);
+            }
+        }
+        System.out.println("[trace] Nível de log alterado para TRACE");
     }
 
     @Unremovable
@@ -95,6 +114,8 @@ public class WonderAgentCommand implements Runnable {
              description = "Executa um ciclo de poll único: verifica e aplica se necessário")
     static class CheckCommand implements Runnable {
         @Inject AgentOrchestrator orchestrator;
+        @Option(names = "--trace", description = "Ativa log no nível TRACE para diagnóstico detalhado",
+                hidden = true) boolean trace;
 
         @Override
         public void run() {
@@ -108,6 +129,8 @@ public class WonderAgentCommand implements Runnable {
              description = "Consulta o servidor central e baixa nova versão se disponível (sem fazer deploy)")
     static class UpdateCommand implements Runnable {
         @Inject AgentOrchestrator orchestrator;
+        @Option(names = "--trace", description = "Ativa log no nível TRACE para diagnóstico detalhado",
+                hidden = true) boolean trace;
 
         @Override
         public void run() {
@@ -121,6 +144,8 @@ public class WonderAgentCommand implements Runnable {
              description = "Faz deploy do artefato já baixado pelo comando update")
     static class DeployCommand implements Runnable {
         @Inject AgentOrchestrator orchestrator;
+        @Option(names = "--trace", description = "Ativa log no nível TRACE para diagnóstico detalhado",
+                hidden = true) boolean trace;
 
         @ConfigProperty(name = "download.temp-dir")
         String tempDir;

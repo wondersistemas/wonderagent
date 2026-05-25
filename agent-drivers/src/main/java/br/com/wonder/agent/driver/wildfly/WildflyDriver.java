@@ -12,15 +12,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
-import java.net.Authenticator;
-import java.net.HttpURLConnection;
-import java.net.PasswordAuthentication;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.OptionalLong;
 
@@ -94,6 +97,9 @@ public class WildflyDriver implements RuntimeDriver {
                 return RuntimeState.PARTIAL;
             }
             return RuntimeState.RUNNING;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return RuntimeState.UNKNOWN;
         } catch (Exception e) {
             log.error("Erro ao detectar estado do WildFly — retornando UNKNOWN: {}", e.getMessage(), e);
             return RuntimeState.UNKNOWN;
@@ -112,6 +118,17 @@ public class WildflyDriver implements RuntimeDriver {
     }
 
     @Override
+    public java.util.Optional<String> getInstalledChecksum() {
+        Path marker = Path.of(deployPath, ".wonder-sha1");
+        try {
+            if (Files.exists(marker)) return java.util.Optional.of(Files.readString(marker).trim());
+        } catch (IOException e) {
+            log.warn("Não foi possível ler arquivo de checksum: {}", e.getMessage());
+        }
+        return java.util.Optional.empty();
+    }
+
+    @Override
     public DeployResult deploy(Artifact artifact) {
         Instant start = Instant.now();
         try {
@@ -120,8 +137,8 @@ public class WildflyDriver implements RuntimeDriver {
 
             Files.copy(artifact.localFile(), target, StandardCopyOption.REPLACE_EXISTING);
 
-            // Escreve marcador de versão lido por getInstalledVersion()
             Files.writeString(Path.of(deployPath, ".wonder-version"), artifact.version());
+            Files.writeString(Path.of(deployPath, ".wonder-sha1"), sha1Hex(target));
 
             log.info("Artefato copiado para {}", target);
             return DeployResult.success(artifact.version(), Duration.between(start, Instant.now()),
@@ -130,6 +147,16 @@ public class WildflyDriver implements RuntimeDriver {
             return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
                     RuntimeState.STOPPED, RuntimeState.STOPPED,
                     "Falha ao copiar artefato: " + e.getMessage());
+        }
+    }
+
+    private static String sha1Hex(Path file) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-1");
+            digest.update(Files.readAllBytes(file));
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-1 não disponível", e);
         }
     }
 
@@ -230,17 +257,57 @@ public class WildflyDriver implements RuntimeDriver {
 
     @Override
     public HealthStatus healthCheck() {
-        int timeoutMs = healthCheckTimeoutSeconds * 1000;
         try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(healthCheckUrl).toURL().openConnection();
-            conn.setConnectTimeout(timeoutMs);
-            conn.setReadTimeout(timeoutMs);
-            int code = conn.getResponseCode();
-            if (code == 200) return HealthStatus.ok();
-            return HealthStatus.unhealthy("HTTP " + code);
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(healthCheckTimeoutSeconds))
+                    .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(healthCheckUrl))
+                    .timeout(Duration.ofSeconds(healthCheckTimeoutSeconds))
+                    .GET()
+                    .build();
+            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() == 200) return HealthStatus.ok();
+            return HealthStatus.unhealthy("HTTP " + response.statusCode());
         } catch (Exception e) {
             return HealthStatus.unhealthy("Health check falhou: " + e.getMessage());
         }
+    }
+
+    /**
+     * Aguarda o deployment scanner confirmar que o WAR da tentativa atual foi processado.
+     * Usa enabled-time como âncora temporal: só aceita status=OK com enabled-time >= deployedAt,
+     * garantindo que o resultado pertence a esta tentativa e não a um deploy anterior.
+     *
+     * Cenários cobertos:
+     *   - 404: scanner ainda não começou a processar → continua aguardando
+     *   - status=OK, enabled-time < deployedAt: resultado de deploy anterior → continua aguardando
+     *   - status=OK, enabled-time >= deployedAt: deployment desta tentativa concluiu → true
+     *   - status=FAILED, enabled-time >= deployedAt: falha desta tentativa → false imediato
+     *   - timeout: false
+     */
+    @Override
+    public boolean waitForDeploymentReady(Instant deployedAt, int timeoutSeconds) {
+        long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+        long deployedAtMs = deployedAt.toEpochMilli();
+        while (System.currentTimeMillis() < deadline) {
+            DeploymentScanResult scan = queryDeploymentStatus();
+            if (scan.enabledTime() >= deployedAtMs) {
+                if ("OK".equals(scan.status())) {
+                    log.info("Deployment confirmado pelo scanner: status=OK enabled-time={}", scan.enabledTime());
+                    return true;
+                }
+                if ("FAILED".equals(scan.status())) {
+                    log.error("Deployment falhou no scanner: status=FAILED enabled-time={}", scan.enabledTime());
+                    return false;
+                }
+            }
+            log.debug("waitForDeploymentReady: status={} enabled-time={} aguardando deployedAt={}",
+                    scan.status(), scan.enabledTime(), deployedAtMs);
+            try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        }
+        log.warn("waitForDeploymentReady: timeout após {}s sem confirmação do scanner", timeoutSeconds);
+        return false;
     }
 
     /**
@@ -298,37 +365,165 @@ public class WildflyDriver implements RuntimeDriver {
         }
     }
 
-    private String queryManagementApi(String attribute) throws IOException {
-        String url = "http://localhost:" + managementPort
-                + "/management?operation=attribute&name=" + attribute;
-        HttpURLConnection conn = openManagementConnection(url);
-        int code = conn.getResponseCode();
-        if (code == HttpURLConnection.HTTP_UNAUTHORIZED) {
-            // WildFly com autenticação habilitada mas sem credenciais configuradas —
-            // 401 prova que o servidor está vivo e respondendo normalmente.
-            return "running";
-        }
-        return new String(conn.getInputStream().readAllBytes())
-                .replaceAll("\"", "").trim();
+    private HttpClient newManagementClient() {
+        return HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(3))
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
     }
 
-    private HttpURLConnection openManagementConnection(String url) throws IOException {
+    /**
+     * Executa um GET na management API com Digest Auth.
+     *
+     * O WildFly associa o nonce à conexão TCP que gerou o 401, portanto o request
+     * autenticado deve usar uma conexão nova — por isso criamos um HttpClient por chamada.
+     *
+     * Retorna null se 404 (recurso não existe).
+     * Retorna "running" se 401 sem credenciais configuradas (servidor vivo mas sem auth).
+     */
+    private String managementGet(String url) throws IOException, InterruptedException {
         Optional<String> user = readWildflyEnvVar("WILDFLY_MGMT_USER");
         Optional<String> pass = readWildflyEnvVar("WILDFLY_MGMT_PASSWORD");
-        HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-        conn.setConnectTimeout(3000);
-        conn.setReadTimeout(3000);
-        if (user.isPresent() && pass.isPresent()) {
-            String u = user.get();
-            char[] p = pass.get().toCharArray();
-            Authenticator.setDefault(new Authenticator() {
-                @Override
-                protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(u, p);
-                }
-            });
+
+        HttpRequest challenge = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(3))
+                .GET()
+                .build();
+        HttpResponse<String> r1 = newManagementClient().send(challenge, HttpResponse.BodyHandlers.ofString());
+
+        if (r1.statusCode() == 200) return r1.body().replaceAll("\"", "").trim();
+        if (r1.statusCode() == 404) return null;
+        if (r1.statusCode() != 401) return null;
+        if (user.isEmpty() || pass.isEmpty()) return "running"; // servidor vivo, sem credenciais
+
+        String wwwAuth = r1.headers().firstValue("WWW-Authenticate").orElse("");
+        String authHeader = buildDigestHeader("GET", url, wwwAuth, user.get(), pass.get());
+
+        HttpRequest authenticated = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(3))
+                .header("Authorization", authHeader)
+                .GET()
+                .build();
+        HttpResponse<String> r2 = newManagementClient().send(authenticated, HttpResponse.BodyHandlers.ofString());
+
+        if (r2.statusCode() == 200) return r2.body().replaceAll("\"", "").trim();
+        if (r2.statusCode() == 404) return null;
+        return null;
+    }
+
+    /**
+     * Monta o header Authorization: Digest a partir do WWW-Authenticate do challenge.
+     * Suporta qop=auth (usado pelo WildFly). Algoritmo: MD5.
+     */
+    private String buildDigestHeader(String method, String url, String wwwAuth,
+                                     String user, String pass) {
+        String realm  = extractDigestParam(wwwAuth, "realm");
+        String nonce  = extractDigestParam(wwwAuth, "nonce");
+        String opaque = extractDigestParam(wwwAuth, "opaque");
+        String qop    = extractDigestParam(wwwAuth, "qop");
+
+        String uri = URI.create(url).getRawPath();
+        String query = URI.create(url).getRawQuery();
+        if (query != null) uri = uri + "?" + query;
+
+        String cnonce = Long.toHexString(new SecureRandom().nextLong());
+        String nc = "00000001";
+
+        String ha1 = md5(user + ":" + realm + ":" + pass);
+        String ha2 = md5(method + ":" + uri);
+        String response = "auth".equals(qop)
+                ? md5(ha1 + ":" + nonce + ":" + nc + ":" + cnonce + ":auth:" + ha2)
+                : md5(ha1 + ":" + nonce + ":" + ha2);
+
+        StringBuilder sb = new StringBuilder("Digest ")
+                .append("username=\"").append(user).append("\", ")
+                .append("realm=\"").append(realm).append("\", ")
+                .append("nonce=\"").append(nonce).append("\", ")
+                .append("uri=\"").append(uri).append("\", ")
+                .append("response=\"").append(response).append("\"");
+        if ("auth".equals(qop)) {
+            sb.append(", qop=auth")
+              .append(", nc=").append(nc)
+              .append(", cnonce=\"").append(cnonce).append("\"");
         }
-        return conn;
+        if (opaque != null && !opaque.isBlank()) {
+            sb.append(", opaque=\"").append(opaque).append("\"");
+        }
+        return sb.toString();
+    }
+
+    private static String extractDigestParam(String header, String param) {
+        String search = param + "=";
+        int idx = header.indexOf(search);
+        if (idx < 0) return "";
+        int start = idx + search.length();
+        if (start < header.length() && header.charAt(start) == '"') {
+            int end = header.indexOf('"', start + 1);
+            return end > start ? header.substring(start + 1, end) : "";
+        }
+        int end = header.indexOf(',', start);
+        return end > start ? header.substring(start, end).trim() : header.substring(start).trim();
+    }
+
+    private static String md5(String input) {
+        try {
+            byte[] digest = MessageDigest.getInstance("MD5").digest(input.getBytes());
+            return HexFormat.of().formatHex(digest);
+        } catch (Exception e) {
+            throw new IllegalStateException("MD5 não disponível", e);
+        }
+    }
+
+    private String queryManagementApi(String attribute) throws IOException, InterruptedException {
+        String url = "http://localhost:" + managementPort
+                + "/management?operation=attribute&name=" + attribute;
+        String result = managementGet(url);
+        // null aqui significa 404 — improvável para server-state, trata como HUNG
+        return result != null ? result : "";
+    }
+
+    private record DeploymentScanResult(String status, long enabledTime) {
+        static DeploymentScanResult notReady() { return new DeploymentScanResult(null, -1); }
+    }
+
+    private DeploymentScanResult queryDeploymentStatus() {
+        try {
+            String base = "http://localhost:" + managementPort
+                    + "/management/deployment/" + artifactName;
+            String statusVal = managementGet(base + "?operation=attribute&name=status");
+            if (statusVal == null) return DeploymentScanResult.notReady();
+            String enabledTimeStr = managementGet(base + "?operation=attribute&name=enabled-time");
+            long enabledTime = enabledTimeStr != null && !enabledTimeStr.isBlank()
+                    ? Long.parseLong(enabledTimeStr) : -1;
+            return new DeploymentScanResult(statusVal, enabledTime);
+        } catch (Exception e) {
+            log.debug("queryDeploymentStatus falhou: {}", e.getMessage());
+            return DeploymentScanResult.notReady();
+        }
+    }
+
+    private boolean hasFailedDeployment() {
+        DeploymentScanResult scan = queryDeploymentStatus();
+        // STOPPED indica deployment desabilitado — tratamos como falha para ir para PARTIAL
+        return "FAILED".equals(scan.status()) || "STOPPED".equals(scan.status());
+    }
+
+    private boolean waitForState(RuntimeState expected, int timeoutSeconds) {
+        long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+        RuntimeState last = null;
+        while (System.currentTimeMillis() < deadline) {
+            RuntimeState current = detectState();
+            if (current != last) {
+                log.debug("waitForState: estado={} aguardando={}", current, expected);
+                last = current;
+            }
+            if (current == expected) return true;
+            try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        }
+        log.warn("waitForState: timeout após {}s aguardando {} — estado atual: {}", timeoutSeconds, expected, last);
+        return false;
     }
 
     // Monta string de exports shell a partir do {wildfly.home}/.env para uso no comando nohup.
@@ -385,37 +580,5 @@ public class WildflyDriver implements RuntimeDriver {
             log.warn("Não foi possível ler {}: {}", envFile, e.getMessage());
         }
         return Optional.empty();
-    }
-
-    private boolean hasFailedDeployment() {
-        try {
-            String url = "http://localhost:" + managementPort
-                    + "/management/deployment/" + artifactName
-                    + "?operation=attribute&name=status";
-            HttpURLConnection conn = openManagementConnection(url);
-            int code = conn.getResponseCode();
-            if (code == 404 || code == HttpURLConnection.HTTP_UNAUTHORIZED) return false;
-            String status = new String(conn.getInputStream().readAllBytes())
-                    .replaceAll("\"", "").trim();
-            return "FAILED".equals(status);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean waitForState(RuntimeState expected, int timeoutSeconds) {
-        long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
-        RuntimeState last = null;
-        while (System.currentTimeMillis() < deadline) {
-            RuntimeState current = detectState();
-            if (current != last) {
-                log.debug("waitForState: estado={} aguardando={}", current, expected);
-                last = current;
-            }
-            if (current == expected) return true;
-            try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
-        }
-        log.warn("waitForState: timeout após {}s aguardando {} — estado atual: {}", timeoutSeconds, expected, last);
-        return false;
     }
 }

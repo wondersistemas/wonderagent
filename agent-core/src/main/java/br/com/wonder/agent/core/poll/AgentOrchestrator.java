@@ -4,6 +4,7 @@ import br.com.wonder.agent.central.CentralClient;
 import br.com.wonder.agent.core.db.DatabaseVersionReader;
 import br.com.wonder.agent.core.deploy.DeployPipeline;
 import br.com.wonder.agent.core.download.ArtifactDownloader;
+import br.com.wonder.agent.core.download.ZsyncChecksumReader;
 import br.com.wonder.agent.core.provision.WildflyProvisioner;
 import br.com.wonder.agent.model.config.AgentStatusReport;
 import br.com.wonder.agent.model.config.DesiredState;
@@ -37,6 +38,7 @@ public class AgentOrchestrator {
     @Inject ArtifactDownloader artifactDownloader;
     @Inject WildflyProvisioner wildflyProvisioner;
     @Inject DatabaseVersionReader databaseVersionReader;
+    @Inject ZsyncChecksumReader zsyncChecksumReader;
 
     @ConfigProperty(name = "agent.client-id")
     String clientId;
@@ -110,12 +112,48 @@ public class AgentOrchestrator {
             }
 
             String installedVersion = driver.getInstalledVersion();
+            log.trace("update: desiredVersion={} installedVersion={} warUrl={}",
+                    desired.version(), installedVersion, desired.warUrl());
 
             if (desired.version().equals(installedVersion)) {
-                log.debug("Versão atual {} já é a desejada", installedVersion);
-                progress.accept("Já está na última versão: " + installedVersion);
-                reportStatus(desired.version(), null);
-                return java.util.Optional.empty();
+                String zsyncUrl = desired.warUrl().replaceAll("\\.war$", ".zsync");
+                log.trace("Versões iguais — verificando checksum via .zsync: {}", zsyncUrl);
+
+                java.util.Optional<String> remoteChecksum = zsyncChecksumReader.readSha1(zsyncUrl);
+                java.util.Optional<String> localChecksum  = driver.getInstalledChecksum()
+                        .or(() -> artifactDownloader.readCachedSha1(desired.warUrl()));
+                log.trace("Checksum remoto: {} | Checksum local (deploy+cache): {}",
+                        remoteChecksum.orElse("ausente"), localChecksum.orElse("ausente"));
+
+                boolean checksumMatch = remoteChecksum.isPresent() && localChecksum.isPresent()
+                        && remoteChecksum.get().equals(localChecksum.get());
+                boolean remoteUnavailable = remoteChecksum.isEmpty();
+
+                if (checksumMatch) {
+                    log.debug("Versão {} e checksum SHA-1 conferem — sem atualização necessária", installedVersion);
+                    progress.accept("Já está na última versão: " + installedVersion);
+                    reportStatus(desired.version(), null);
+                    return java.util.Optional.empty();
+                }
+
+                if (remoteUnavailable) {
+                    log.debug("Checksum remoto indisponível — confiando apenas na versão {}", installedVersion);
+                    progress.accept("Já está na última versão: " + installedVersion);
+                    reportStatus(desired.version(), null);
+                    return java.util.Optional.empty();
+                }
+
+                // checksum remoto disponível mas local ausente (deploy manual ou versão anterior do agente)
+                // ou checksums divergem — força re-download
+                if (localChecksum.isEmpty()) {
+                    log.warn("Checksum local ausente para versão {} — forçando re-download para garantir integridade",
+                            installedVersion);
+                    progress.accept("Checksum local ausente para versão " + installedVersion + " — forçando re-download");
+                } else {
+                    log.warn("Versão {} instalada mas checksum diverge (remote={} local={}) — forçando re-deploy",
+                            installedVersion, remoteChecksum.get(), localChecksum.get());
+                    progress.accept("Checksum diverge para versão " + installedVersion + " — forçando re-download");
+                }
             }
 
             log.info("Atualização disponível: {} → {}", installedVersion, desired.version());

@@ -30,6 +30,15 @@ public interface RuntimeDriver {
     /** Retorna a versão do artefato atualmente instalado, ou null se não detectável. */
     String getInstalledVersion();
 
+    /**
+     * Retorna o SHA-1 (hex, minúsculas) do artefato atualmente instalado,
+     * ou Optional.empty() se não disponível.
+     * Usado para verificar integridade quando a versão não mudou.
+     */
+    default java.util.Optional<String> getInstalledChecksum() {
+        return java.util.Optional.empty();
+    }
+
     /** Realiza o deploy do artefato. Assume que o runtime está STOPPED. */
     DeployResult deploy(Artifact artifact);
 
@@ -56,5 +65,18 @@ public interface RuntimeDriver {
      */
     default HealthStatus healthCheckWithRetry() {
         return healthCheck();
+    }
+
+    /**
+     * Aguarda o runtime confirmar que o artefato da tentativa atual foi processado
+     * com sucesso. O parâmetro {@code deployedAt} ancora a verificação ao instante
+     * em que o artefato foi copiado, descartando resultados de deploys anteriores.
+     *
+     * Retorna true se o deployment foi confirmado como OK dentro do timeout.
+     * Implementação padrão: retorna true imediatamente (sem verificação extra).
+     * Drivers que fazem deploy assíncrono devem sobrescrever.
+     */
+    default boolean waitForDeploymentReady(java.time.Instant deployedAt, int timeoutSeconds) {
+        return true;
     }
 }

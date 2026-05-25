@@ -24,7 +24,15 @@ public class Main implements QuarkusApplication {
     @Override
     public int run(String... args) throws Exception {
         applyConsoleEncoding();
+        WonderAgentCommand.enableTrace(containsTrace(args));
         return picocliRunner.run(args);
+    }
+
+    private static boolean containsTrace(String[] args) {
+        for (String arg : args) {
+            if ("--trace".equals(arg)) return true;
+        }
+        return false;
     }
 
     private static void applyConsoleEncoding() {

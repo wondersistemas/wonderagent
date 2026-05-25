@@ -59,7 +59,7 @@ public class ArtifactDownloader {
                 "warUrl vazio no desired-state — verifique a configuração do servidor central para clientId=" + artifact.artifactId(), null);
         }
 
-        String zsyncUrl = artifact.warUrl().replace(".war", ".zsync");
+        String zsyncUrl = artifact.warUrl().replaceAll("\\.war$", ".zsync");
         log.info("Baixando artefato: {} via zsync — {}", artifact.coordinates(), zsyncUrl);
         progress.accept("  URL: " + zsyncUrl);
 
@@ -100,6 +100,7 @@ public class ArtifactDownloader {
             Path result = zsync.zsync(URI.create(zsyncUrl), options, observer);
             observer.reportFinal();
             log.info("Download concluído: {}", result);
+            writeSha1Cache(result);
             try {
                 long sizeMb = Files.size(result) / (1024 * 1024);
                 progress.accept("  Arquivo salvo em: " + result + " (" + sizeMb + " MB)");
@@ -124,6 +125,36 @@ public class ArtifactDownloader {
                     cv.getExpectedChecksum(), cv.getActualChecksum());
         } else {
             log.error("Checksum SHA-1 inválido em {}: {}", coordinates, e.getMessage());
+        }
+    }
+
+    /**
+     * Retorna o SHA-1 do WAR em cache no temp dir (gravado após o último download),
+     * ou empty se o cache não existe ou o WAR foi removido.
+     * Usado pelo AgentOrchestrator para evitar re-download quando o hash remoto já confere
+     * com o arquivo baixado mas ainda não deployado.
+     */
+    public java.util.Optional<String> readCachedSha1(String warUrl) {
+        Path sha1File = Path.of(tempDir).resolve(filename(warUrl) + ".sha1");
+        Path warFile  = Path.of(tempDir).resolve(filename(warUrl));
+        if (!Files.exists(sha1File) || !Files.exists(warFile)) return java.util.Optional.empty();
+        try {
+            return java.util.Optional.of(Files.readString(sha1File).trim());
+        } catch (IOException e) {
+            log.warn("Não foi possível ler cache de SHA-1 ({}): {}", sha1File, e.getMessage());
+            return java.util.Optional.empty();
+        }
+    }
+
+    private void writeSha1Cache(Path warFile) {
+        try {
+            byte[] data = Files.readAllBytes(warFile);
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-1");
+            String sha1 = java.util.HexFormat.of().formatHex(digest.digest(data));
+            Files.writeString(warFile.resolveSibling(warFile.getFileName() + ".sha1"), sha1);
+            log.debug("SHA-1 do WAR em cache: {}", sha1);
+        } catch (Exception e) {
+            log.warn("Não foi possível gravar cache de SHA-1 para {}: {}", warFile.getFileName(), e.getMessage());
         }
     }
 

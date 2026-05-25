@@ -58,6 +58,26 @@ class ArtifactDownloaderTest {
     }
 
     @Test
+    void download_zsyncUrlNaoSubstituiWarNoCaminhoApenasNaExtensao() throws Exception {
+        // Regressão: ".replace(.war, .zsync)" trocava todas as ocorrências,
+        // convertendo "wnfe-war" no path em "wnfe-zsync" e gerando 404.
+        String warUrl = "http://192.168.0.86:8082/wnfe-releases/br/com/wonder/wnfe-war/2.999/wnfe-war-2.999.war";
+        String expectedZsync = "http://192.168.0.86:8082/wnfe-releases/br/com/wonder/wnfe-war/2.999/wnfe-war-2.999.zsync";
+
+        Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
+        Files.createFile(downloaded);
+        when(zsync.zsync(any(), any(), any())).thenReturn(downloaded);
+
+        Artifact a = new Artifact("wnfe-war", "2.999", warUrl, null);
+        downloader.download(a);
+
+        ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
+        verify(zsync).zsync(uriCaptor.capture(), any(), any());
+        assertThat(uriCaptor.getValue().toString()).isEqualTo(expectedZsync);
+        assertThat(uriCaptor.getValue().toString()).doesNotContain("wnfe-zsync");
+    }
+
+    @Test
     void download_passaCredenciaisParaOHost() throws Exception {
         Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
         Files.createFile(downloaded);
