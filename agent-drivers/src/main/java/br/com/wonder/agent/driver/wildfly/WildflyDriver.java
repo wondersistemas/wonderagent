@@ -129,6 +129,12 @@ public class WildflyDriver implements RuntimeDriver {
     }
 
     @Override
+    public java.util.Optional<java.nio.file.Path> getInstalledArtifactPath() {
+        Path war = Path.of(deployPath, artifactName);
+        return Files.exists(war) ? java.util.Optional.of(war) : java.util.Optional.empty();
+    }
+
+    @Override
     public DeployResult deploy(Artifact artifact) {
         Instant start = Instant.now();
         try {

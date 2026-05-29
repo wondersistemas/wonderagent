@@ -50,10 +50,15 @@ public class ArtifactDownloader {
     }
 
     public Artifact download(Artifact artifact) throws DownloadException {
-        return download(artifact, msg -> {});
+        return download(artifact, msg -> {}, java.util.Optional.empty());
     }
 
     public Artifact download(Artifact artifact, java.util.function.Consumer<String> progress) throws DownloadException {
+        return download(artifact, progress, java.util.Optional.empty());
+    }
+
+    public Artifact download(Artifact artifact, java.util.function.Consumer<String> progress,
+                             java.util.Optional<Path> installedWarHint) throws DownloadException {
         if (artifact.warUrl() == null || artifact.warUrl().isBlank()) {
             throw new DownloadException(
                 "warUrl vazio no desired-state — verifique a configuração do servidor central para clientId=" + artifact.artifactId(), null);
@@ -82,6 +87,15 @@ public class ArtifactDownloader {
                 progress.accept("  Arquivo anterior encontrado — usando delta (zsync)");
             } catch (IOException e) {
                 log.warn("Não foi possível renomear arquivo anterior: {}", e.getMessage());
+            }
+        } else if (installedWarHint.isPresent() && Files.exists(installedWarHint.get())) {
+            try {
+                Files.copy(installedWarHint.get(), zsOld, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                log.debug("Usando WAR instalado como base para delta: {}", installedWarHint.get());
+                progress.accept("  Usando WAR instalado como base — usando delta (zsync)");
+            } catch (IOException e) {
+                log.warn("Não foi possível copiar WAR instalado para base zsync: {}", e.getMessage());
+                progress.accept("  Nenhuma versão anterior em cache — download completo");
             }
         } else {
             progress.accept("  Nenhuma versão anterior em cache — download completo");

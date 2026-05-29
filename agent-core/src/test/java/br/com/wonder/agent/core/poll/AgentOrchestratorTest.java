@@ -97,7 +97,7 @@ class AgentOrchestratorTest {
         when(driver.getInstalledVersion()).thenReturn("2.5.0").thenReturn("2.5.0");
         when(driver.getInstalledChecksum()).thenReturn(java.util.Optional.of("checksum-corrompido"));
         when(zsyncChecksumReader.readSha1(any())).thenReturn(java.util.Optional.of("checksum-remoto-correto"));
-        when(artifactDownloader.download(any(), any())).thenAnswer(inv ->
+        when(artifactDownloader.download(any(), any(), any())).thenAnswer(inv ->
                 ((Artifact) inv.getArgument(0)).withLocalFile(java.nio.file.Path.of("/tmp/wnfe-war-2.5.0.war")));
         when(deployPipeline.execute(any())).thenReturn(
                 DeployResult.success("2.5.0", java.time.Duration.ofSeconds(10),
@@ -107,7 +107,7 @@ class AgentOrchestratorTest {
 
         orchestrator.poll();
 
-        verify(artifactDownloader).download(any(), any());
+        verify(artifactDownloader).download(any(), any(), any());
         verify(deployPipeline).execute(any());
     }
 
@@ -132,7 +132,7 @@ class AgentOrchestratorTest {
         when(driver.getInstalledChecksum()).thenReturn(java.util.Optional.empty());
         when(artifactDownloader.readCachedSha1(any())).thenReturn(java.util.Optional.empty());
         when(zsyncChecksumReader.readSha1(any())).thenReturn(java.util.Optional.of("checksum-remoto"));
-        when(artifactDownloader.download(any(), any())).thenAnswer(inv ->
+        when(artifactDownloader.download(any(), any(), any())).thenAnswer(inv ->
                 ((Artifact) inv.getArgument(0)).withLocalFile(java.nio.file.Path.of("/tmp/wnfe-war-2.5.0.war")));
         when(deployPipeline.execute(any())).thenReturn(
                 DeployResult.success("2.5.0", java.time.Duration.ofSeconds(10),
@@ -142,7 +142,7 @@ class AgentOrchestratorTest {
 
         orchestrator.poll();
 
-        verify(artifactDownloader).download(any(), any());
+        verify(artifactDownloader).download(any(), any(), any());
         verify(deployPipeline).execute(any());
     }
 
@@ -159,7 +159,7 @@ class AgentOrchestratorTest {
 
         orchestrator.poll();
 
-        verify(artifactDownloader, never()).download(any(), any());
+        verify(artifactDownloader, never()).download(any(), any(), any());
         verify(deployPipeline, never()).execute(any());
     }
 
@@ -167,7 +167,7 @@ class AgentOrchestratorTest {
     void poll_quandoVersaoDesatualizada_baixaEFazDeploy() throws Exception {
         when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
         when(driver.getInstalledVersion()).thenReturn("2.4.0").thenReturn("2.5.0");
-        when(artifactDownloader.download(any(), any())).thenAnswer(inv ->
+        when(artifactDownloader.download(any(), any(), any())).thenAnswer(inv ->
                 ((Artifact) inv.getArgument(0)).withLocalFile(Path.of("/tmp/wnfe-war-2.5.0.war")));
         when(deployPipeline.execute(any())).thenReturn(
                 DeployResult.success("2.5.0", Duration.ofSeconds(45),
@@ -177,7 +177,7 @@ class AgentOrchestratorTest {
 
         orchestrator.poll();
 
-        verify(artifactDownloader).download(any(), any());
+        verify(artifactDownloader).download(any(), any(), any());
         verify(deployPipeline).execute(any());
         verify(centralClient).reportStatus(eq("cliente-abc"), any());
     }
@@ -186,7 +186,7 @@ class AgentOrchestratorTest {
     void poll_quandoDownloadFalha_reportaStatusSemDeploy() throws Exception {
         when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
         when(driver.getInstalledVersion()).thenReturn("2.4.0");
-        when(artifactDownloader.download(any(), any()))
+        when(artifactDownloader.download(any(), any(), any()))
                 .thenThrow(new ArtifactDownloader.DownloadException("S3 indisponível", new Exception()));
         when(driver.detectState()).thenReturn(RuntimeState.RUNNING);
         when(driver.healthCheck()).thenReturn(HealthStatus.ok());
@@ -204,7 +204,7 @@ class AgentOrchestratorTest {
 
         when(centralClient.fetchDesiredState("cliente-abc")).thenReturn(desiredState);
         when(driver.getInstalledVersion()).thenReturn("2.4.0").thenReturn("2.4.0");
-        when(artifactDownloader.download(any(), any())).thenAnswer(inv ->
+        when(artifactDownloader.download(any(), any(), any())).thenAnswer(inv ->
                 ((Artifact) inv.getArgument(0)).withLocalFile(Path.of("/tmp/wnfe-war-2.5.0.war")));
         when(deployPipeline.execute(any())).thenReturn(falha);
         when(driver.detectState()).thenReturn(RuntimeState.STOPPED);

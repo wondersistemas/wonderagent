@@ -39,6 +39,15 @@ public interface RuntimeDriver {
         return java.util.Optional.empty();
     }
 
+    /**
+     * Retorna o path do artefato instalado no runtime (ex: deployments/wnfe.war),
+     * ou Optional.empty() se não disponível.
+     * Usado pelo downloader como base para delta zsync quando não há cache local.
+     */
+    default java.util.Optional<java.nio.file.Path> getInstalledArtifactPath() {
+        return java.util.Optional.empty();
+    }
+
     /** Realiza o deploy do artefato. Assume que o runtime está STOPPED. */
     DeployResult deploy(Artifact artifact);
 

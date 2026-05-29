@@ -165,7 +165,8 @@ public class AgentOrchestrator {
             progress.accept("Iniciando download...");
 
             try {
-                Artifact artifact = artifactDownloader.download(toArtifact(desired), progress);
+                Artifact artifact = artifactDownloader.download(toArtifact(desired), progress,
+                        driver.getInstalledArtifactPath());
                 progress.accept("Download concluído.");
                 return java.util.Optional.of(artifact);
             } catch (ArtifactDownloader.DownloadException e) {
