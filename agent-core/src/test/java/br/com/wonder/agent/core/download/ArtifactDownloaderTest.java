@@ -44,6 +44,14 @@ class ArtifactDownloaderTest {
         return new Artifact("wnfe-war", "2.999", WAR_URL, null);
     }
 
+    /** Cria um arquivo com tamanho múltiplo de 4096 para satisfazer isBlockAligned(). */
+    static void writeAligned(Path file, String seed) throws Exception {
+        byte[] block = new byte[4096];
+        byte[] seedBytes = seed.getBytes();
+        System.arraycopy(seedBytes, 0, block, 0, Math.min(seedBytes.length, block.length));
+        Files.write(file, block);
+    }
+
     @Test
     void download_usaUrlZsyncSubstituindoExtensao() throws Exception {
         Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
@@ -98,7 +106,7 @@ class ArtifactDownloaderTest {
     void download_quandoWarExistente_renomeiaPraZsOldEPassaComoInputFile() throws Exception {
         Path war = tempDir.resolve("wnfe-war-2.999.war");
         Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
-        Files.writeString(war, "previous-war-content");
+        writeAligned(war, "previous-war-content");
         when(zsync.zsync(any(), any(), any())).thenReturn(war);
 
         downloader.download(artifact());
@@ -115,7 +123,7 @@ class ArtifactDownloaderTest {
     void download_quandoWarExistente_apagaZsOldAoFinal() throws Exception {
         Path war = tempDir.resolve("wnfe-war-2.999.war");
         Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
-        Files.writeString(war, "previous-war-content");
+        writeAligned(war, "previous-war-content");
         when(zsync.zsync(any(), any(), any())).thenReturn(war);
 
         downloader.download(artifact());
@@ -162,7 +170,7 @@ class ArtifactDownloaderTest {
     void download_quandoZsyncFalha_apagaZsOldMesmoComErro() throws Exception {
         Path war = tempDir.resolve("wnfe-war-2.999.war");
         Path zsOld = tempDir.resolve("wnfe-war-2.999.war.zs-old");
-        Files.writeString(war, "previous-war-content");
+        writeAligned(war, "previous-war-content");
         when(zsync.zsync(any(), any(), any())).thenThrow(new ZsyncException("falha"));
 
         assertThatThrownBy(() -> downloader.download(artifact()))
