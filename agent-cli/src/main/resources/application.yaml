@@ -64,7 +64,7 @@ driver:
     artifact-name: "wnfe.war"
     start-timeout-seconds: 180
     stop-timeout-seconds: 60
-    health-check-url: "http://localhost:8080/probusweb/health"
+    health-check-url: "http://localhost:8080/probusweb/seam/resource/probusrest/health"
     # Cada tentativa aguarda este timeout para conexão e leitura da resposta HTTP.
     # Entre tentativas há uma pausa fixa de 10s.
     # Tempo total máximo de espera ≈ retries × (timeout + 10s)
