@@ -210,19 +210,14 @@ public class WildflyDriver implements RuntimeDriver {
     public boolean stop() {
         log.info("Parando WildFly (timeout={}s, serviceMode={})", stopTimeoutSeconds, serviceMode);
         try {
-            ProcessBuilder pb;
             if (serviceMode) {
-                pb = isLinux()
+                ProcessBuilder pb = isLinux()
                         ? new ProcessBuilder("systemctl", "stop", "wildfly")
                         : new ProcessBuilder("sc", "stop", "WildFly");
+                pb.start().waitFor();
             } else {
-                pb = isLinux()
-                        ? new ProcessBuilder(wildflyHome + "/bin/jboss-cli.sh",
-                                "--connect", "--command=:shutdown")
-                        : new ProcessBuilder(wildflyHome + "/bin/jboss-cli.bat",
-                                "--connect", "--command=:shutdown");
+                shutdownViaManagementApi();
             }
-            pb.start().waitFor();
             boolean stopped = waitForState(RuntimeState.STOPPED, stopTimeoutSeconds);
             if (!stopped) {
                 log.error("WildFly não atingiu estado STOPPED em {}s — estado atual: {}", stopTimeoutSeconds, detectState());
@@ -332,6 +327,52 @@ public class WildflyDriver implements RuntimeDriver {
     }
 
     // ── Métodos privados ──────────────────────────────────────────────────────
+
+    /**
+     * Envia o comando de shutdown via management API HTTP (POST /management).
+     * Não depende do jboss-cli.sh, que não está presente no WildFly slim provisionado.
+     */
+    private void shutdownViaManagementApi() throws IOException, InterruptedException {
+        String url = "http://localhost:" + managementPort + "/management";
+        String body = "{\"operation\":\"shutdown\",\"address\":[]}";
+
+        Optional<String> user = readWildflyEnvVar("WILDFLY_MGMT_USER");
+        Optional<String> pass = readWildflyEnvVar("WILDFLY_MGMT_PASSWORD");
+
+        HttpRequest challenge = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(5))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<Void> r1 = newManagementClient().send(challenge, HttpResponse.BodyHandlers.discarding());
+
+        if (r1.statusCode() == 200) {
+            log.info("Comando de shutdown enviado via management API");
+            return;
+        }
+        if (r1.statusCode() != 401 || user.isEmpty() || pass.isEmpty()) {
+            log.warn("Resposta inesperada do management API ao enviar shutdown: HTTP {}", r1.statusCode());
+            return;
+        }
+
+        String wwwAuth = r1.headers().firstValue("WWW-Authenticate").orElse("");
+        String authHeader = buildDigestHeader("POST", url, wwwAuth, user.get(), pass.get());
+
+        HttpRequest authenticated = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(5))
+                .header("Content-Type", "application/json")
+                .header("Authorization", authHeader)
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<Void> r2 = newManagementClient().send(authenticated, HttpResponse.BodyHandlers.discarding());
+        if (r2.statusCode() == 200) {
+            log.info("Comando de shutdown enviado via management API (com autenticação)");
+        } else {
+            log.warn("Resposta inesperada do management API ao enviar shutdown autenticado: HTTP {}", r2.statusCode());
+        }
+    }
 
     private boolean isLinux() {
         return System.getProperty("os.name").toLowerCase().contains("linux");
