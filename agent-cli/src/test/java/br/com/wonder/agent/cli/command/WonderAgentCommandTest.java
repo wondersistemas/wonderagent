@@ -24,9 +24,9 @@ import static org.mockito.Mockito.when;
 class WonderAgentCommandTest {
 
     @Nested
-    class CheckCommandTest {
+    class VerifAtualizacaoCommandTest {
         @Mock AgentOrchestrator orchestrator;
-        @InjectMocks WonderAgentCommand.CheckCommand command;
+        @InjectMocks WonderAgentCommand.VerifAtualizacaoCommand command;
 
         @Test
         void run_delegaAoOrchestratorPollNow() {
@@ -153,9 +153,9 @@ class WonderAgentCommandTest {
     }
 
     @Nested
-    class ProvisionCommandTest {
+    class ProvisionarCommandTest {
         @Mock WildflyProvisioner provisioner;
-        @InjectMocks WonderAgentCommand.ProvisionCommand command;
+        @InjectMocks WonderAgentCommand.ProvisionarCommand command;
 
         @Test
         void run_comVersaoExplicita_chamaEnsureVersion() throws Exception {

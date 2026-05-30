@@ -36,8 +36,8 @@ import java.nio.file.Path;
     subcommands = {
         WonderAgentCommand.StatusCommand.class,
         WonderAgentCommand.DetectCommand.class,
-        WonderAgentCommand.CheckCommand.class,
-        WonderAgentCommand.UpdateCommand.class,
+        WonderAgentCommand.VerifAtualizacaoCommand.class,
+        WonderAgentCommand.DownloadCommand.class,
         WonderAgentCommand.DeployCommand.class,
         WonderAgentCommand.InstallCommand.class,
         WonderAgentCommand.UninstallCommand.class,
@@ -45,7 +45,7 @@ import java.nio.file.Path;
         WonderAgentCommand.DbVersionCommand.class,
         WonderAgentCommand.DownloadServerCommand.class,
         WonderAgentCommand.ApplyServerCommand.class,
-        WonderAgentCommand.ProvisionCommand.class,
+        WonderAgentCommand.ProvisionarCommand.class,
     }
 )
 public class WonderAgentCommand implements Runnable {
@@ -110,9 +110,9 @@ public class WonderAgentCommand implements Runnable {
 
     @Unremovable
     @ApplicationScoped
-    @Command(name = "check", mixinStandardHelpOptions = true,
+    @Command(name = "verif_atualizacao", mixinStandardHelpOptions = true,
              description = "Executa um ciclo de poll único: verifica e aplica se necessário")
-    static class CheckCommand implements Runnable {
+    static class VerifAtualizacaoCommand implements Runnable {
         @Inject AgentOrchestrator orchestrator;
         @Option(names = "--trace", description = "Ativa log no nível TRACE para diagnóstico detalhado",
                 hidden = true) boolean trace;
@@ -125,9 +125,9 @@ public class WonderAgentCommand implements Runnable {
 
     @Unremovable
     @ApplicationScoped
-    @Command(name = "update", mixinStandardHelpOptions = true,
+    @Command(name = "download", mixinStandardHelpOptions = true,
              description = "Consulta o servidor central e baixa nova versão se disponível (sem fazer deploy)")
-    static class UpdateCommand implements Runnable {
+    static class DownloadCommand implements Runnable {
         @Inject AgentOrchestrator orchestrator;
         @Option(names = "--trace", description = "Ativa log no nível TRACE para diagnóstico detalhado",
                 hidden = true) boolean trace;
@@ -141,7 +141,7 @@ public class WonderAgentCommand implements Runnable {
     @Unremovable
     @ApplicationScoped
     @Command(name = "deploy", mixinStandardHelpOptions = true,
-             description = "Faz deploy do artefato já baixado pelo comando update")
+             description = "Faz deploy do artefato já baixado pelo comando download")
     static class DeployCommand implements Runnable {
         @Inject AgentOrchestrator orchestrator;
         @Option(names = "--trace", description = "Ativa log no nível TRACE para diagnóstico detalhado",
@@ -164,7 +164,7 @@ public class WonderAgentCommand implements Runnable {
             }
 
             if (warFile == null) {
-                System.err.println("Nenhum artefato encontrado em " + tempDir + " — execute 'wonderagent update' primeiro.");
+                System.err.println("Nenhum artefato encontrado em " + tempDir + " — execute 'wonderagent download' primeiro.");
                 return;
             }
 
@@ -344,9 +344,9 @@ public class WonderAgentCommand implements Runnable {
 
     @Unremovable
     @ApplicationScoped
-    @Command(name = "provision", mixinStandardHelpOptions = true,
+    @Command(name = "provisionar", mixinStandardHelpOptions = true,
              description = "Baixa e instala o WildFly (download-server + apply-server). Se já estiver na versão correta, não faz nada.")
-    static class ProvisionCommand implements Runnable {
+    static class ProvisionarCommand implements Runnable {
         @Inject WildflyProvisioner provisioner;
 
         @Option(names = "--version",
