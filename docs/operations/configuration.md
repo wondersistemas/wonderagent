@@ -19,7 +19,8 @@ C:\ProgramData\WonderAgent\          ← agent.home
     wnfe-war-2.x.war                 ← cache para delta zsync
     wildfly-provisioning-x-dist.zip  ← cache para delta zsync do WildFly
   wildfly\                           ← driver.wildfly.home
-    .wildfly-version                 ← versão do WildFly instalado
+    .wildfly-version                 ← versão lógica do WildFly instalado
+    .wildfly-sha1                    ← SHA-1 do ZIP instalado (detecção de nova build)
     .env                             ← variáveis do WildFly: DB_URL, DB_USER, DB_PASSWORD, WILDFLY_MGMT_USER, WILDFLY_MGMT_PASSWORD
     bin\
     standalone\
@@ -124,6 +125,11 @@ O ZIP é publicado no Reposilite como:
 
 Após extração, o WildFly é instalado diretamente em `driver.wildfly.home`.
 A versão instalada é rastreada em `driver.wildfly.home/.wildfly-version`.
+
+A detecção de nova build usa o SHA-1 do arquivo `.zsync` remoto do ZIP, comparado com
+`.wildfly-sha1` local — o mesmo mecanismo usado para o WAR. Assim, uma nova build do mesmo
+SNAPSHOT é detectada e instalada mesmo que a versão lógica não tenha mudado.
+Se o SHA-1 remoto estiver indisponível, o agente confia na versão lógica em `.wildfly-version`.
 
 ---
 

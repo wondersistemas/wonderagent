@@ -1,6 +1,9 @@
 package br.com.wonder.agent.core.provision;
 
+import br.com.wonder.agent.core.download.ZsyncChecksumReader;
 import br.com.wonder.agent.core.download.ZsyncDownloadHelper;
+import br.com.wonder.agent.model.driver.RuntimeDriver;
+import br.com.wonder.agent.model.state.RuntimeState;
 import com.salesforce.zsync.Zsync;
 import com.salesforce.zsync.ZsyncException;
 import com.salesforce.zsync.http.Credentials;
@@ -35,33 +38,45 @@ class WildflyProvisionerTest {
     Zsync zsync;
     ZsyncDownloadHelper helper;
     ReposiliteMetadataClient metadataClient;
+    ZsyncChecksumReader checksumReader;
+    RuntimeDriver runtimeDriver;
     WildflyProvisioner provisioner;
 
     static final String REPO_URL = "http://192.168.0.86:8082";
     static final String REPO_PATH = "wnfe-releases";
     static final String VERSION = "1.0.0-SNAPSHOT";
+    static final String REMOTE_SHA1 = "aabbccdd11223344aabbccdd11223344aabbccdd";
+    static final String OTHER_SHA1  = "1111111111111111111111111111111111111111";
 
     @BeforeEach
     void setUp() throws Exception {
         zsync = mock(Zsync.class);
         metadataClient = mock(ReposiliteMetadataClient.class);
+        checksumReader = mock(ZsyncChecksumReader.class);
+        runtimeDriver = mock(RuntimeDriver.class);
         helper = new ZsyncDownloadHelper(zsync, "reader", Optional.of("secret"));
         setField(helper, "username", "reader");
         setField(helper, "password", Optional.of("secret"));
-        provisioner = new WildflyProvisioner(helper, metadataClient);
+        provisioner = new WildflyProvisioner(helper, metadataClient, checksumReader, runtimeDriver);
+        // Por padrão, runtime está parado — nenhum stop necessário nos testes
+        when(runtimeDriver.detectState()).thenReturn(RuntimeState.STOPPED);
         setField(provisioner, "repositoryUrl", REPO_URL);
         setField(provisioner, "repoPath", REPO_PATH);
         setField(provisioner, "username", "reader");
         setField(provisioner, "password", Optional.of("secret"));
         setField(provisioner, "tempDir", tempDir.toString());
         setField(provisioner, "wildflyHome", wildflyHome.toString());
+        setField(provisioner, "managementPort", 0);     // porta fechada por padrão — sem stop necessário
+        setField(provisioner, "stopTimeoutSeconds", 5); // timeout curto para testes
         setField(provisioner, "fixedVersion", Optional.empty());
         setField(provisioner, "dbUrl", Optional.empty());
         setField(provisioner, "dbUsername", Optional.empty());
         setField(provisioner, "dbPassword", Optional.empty());
-        // Por padrão, resolveSnapshotValue retorna a versão sem alteração (simula release ou SNAPSHOT sem timestamp)
+        // Por padrão, resolveSnapshotValue retorna a versão sem alteração
         when(metadataClient.resolveSnapshotValue(any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                .thenAnswer(inv -> inv.getArgument(4)); // retorna o argumento 'version'
+                .thenAnswer(inv -> inv.getArgument(4));
+        // Por padrão, SHA-1 remoto difere do local → forçará download nos testes que não sobrescrevem
+        when(checksumReader.readSha1(any())).thenReturn(Optional.of(REMOTE_SHA1));
     }
 
     // ── buildZipUrl ──────────────────────────────────────────────────────────
@@ -75,10 +90,22 @@ class WildflyProvisionerTest {
                         + VERSION + "/wildfly-provisioning-" + VERSION + "-dist.zip");
     }
 
-    // ── ensureVersion — versão já instalada ──────────────────────────────────
+    // ── ensureVersion — já na build atual (SHA-1 confere) ────────────────────
 
     @Test
-    void ensureVersion_quandoJaInstalado_retornaFalse() throws Exception {
+    void ensureVersion_quandoSha1Confere_retornaFalse() throws Exception {
+        Files.writeString(wildflyHome.resolve(".wildfly-sha1"), REMOTE_SHA1);
+        // checksumReader já retorna REMOTE_SHA1 por padrão no setUp
+
+        boolean result = provisioner.ensureVersion(VERSION);
+
+        assertThat(result).isFalse();
+        verifyNoInteractions(zsync);
+    }
+
+    @Test
+    void ensureVersion_quandoSha1RemotoIndisponivelEVersaoIgual_retornaFalse() throws Exception {
+        when(checksumReader.readSha1(any())).thenReturn(Optional.empty());
         Files.writeString(wildflyHome.resolve(".wildfly-version"), VERSION);
 
         boolean result = provisioner.ensureVersion(VERSION);
@@ -87,11 +114,12 @@ class WildflyProvisionerTest {
         verifyNoInteractions(zsync);
     }
 
-    // ── ensureVersion — versão diferente ─────────────────────────────────────
+    // ── ensureVersion — nova build disponível ────────────────────────────────
 
     @Test
-    void ensureVersion_quandoVersaoDiferente_baixaEExtrai() throws Exception {
-        Files.writeString(wildflyHome.resolve(".wildfly-version"), "0.9.0");
+    void ensureVersion_quandoSha1Diverge_baixaEExtrai() throws Exception {
+        Files.writeString(wildflyHome.resolve(".wildfly-sha1"), OTHER_SHA1);
+        // checksumReader retorna REMOTE_SHA1 != OTHER_SHA1
         mockZsyncComZip(VERSION);
 
         boolean result = provisioner.ensureVersion(VERSION);
@@ -99,17 +127,54 @@ class WildflyProvisionerTest {
         assertThat(result).isTrue();
         verify(zsync).zsync(any(), any(), any());
         assertThat(wildflyHome.resolve(".wildfly-version")).hasContent(VERSION);
+        assertThat(wildflyHome.resolve(".wildfly-sha1")).hasContent(REMOTE_SHA1);
     }
 
     @Test
-    void ensureVersion_quandoSemVersaoInstalada_baixaEExtrai() throws Exception {
-        // nenhum .wildfly-version presente
+    void ensureVersion_quandoSemSha1Local_baixaEExtrai() throws Exception {
+        // nenhum .wildfly-sha1 presente
         mockZsyncComZip(VERSION);
 
         boolean result = provisioner.ensureVersion(VERSION);
 
         assertThat(result).isTrue();
         assertThat(wildflyHome.resolve(".wildfly-version")).hasContent(VERSION);
+        assertThat(wildflyHome.resolve(".wildfly-sha1")).hasContent(REMOTE_SHA1);
+    }
+
+    @Test
+    void ensureVersion_quandoRuntimeRodando_paraAntesDeExtrair() throws Exception {
+        // stop() fecha a porta — provisioner detecta porta aberta, chama stop, depois extrai
+        try (java.net.ServerSocket srv = new java.net.ServerSocket(0)) {
+            srv.setReuseAddress(true);
+            int port = srv.getLocalPort();
+            setField(provisioner, "managementPort", port);
+            when(runtimeDriver.stop()).thenAnswer(inv -> { srv.close(); return true; });
+            mockZsyncComZip(VERSION);
+
+            boolean result = provisioner.ensureVersion(VERSION);
+
+            assertThat(result).isTrue();
+            verify(runtimeDriver).stop();
+            assertThat(wildflyHome.resolve(".wildfly-version")).hasContent(VERSION);
+        }
+    }
+
+    @Test
+    void ensureVersion_quandoStopFalha_tentaForceKill() throws Exception {
+        try (java.net.ServerSocket srv = new java.net.ServerSocket(0)) {
+            srv.setReuseAddress(true);
+            int port = srv.getLocalPort();
+            setField(provisioner, "managementPort", port);
+            when(runtimeDriver.stop()).thenReturn(false);
+            when(runtimeDriver.forceKill()).thenAnswer(inv -> { srv.close(); return true; });
+            mockZsyncComZip(VERSION);
+
+            provisioner.ensureVersion(VERSION);
+
+            verify(runtimeDriver).stop();
+            verify(runtimeDriver).forceKill();
+        }
     }
 
     // ── versão fixada via fixedVersion ────────────────────────────────────────
@@ -117,7 +182,8 @@ class WildflyProvisionerTest {
     @Test
     void ensureVersion_fixedVersionPrevaleceOverDesired() throws Exception {
         setField(provisioner, "fixedVersion", Optional.of("2.0.0"));
-        Files.writeString(wildflyHome.resolve(".wildfly-version"), "2.0.0");
+        Files.writeString(wildflyHome.resolve(".wildfly-sha1"), REMOTE_SHA1);
+        // checksumReader retorna REMOTE_SHA1 por padrão → já instalado
 
         // desired diz 1.0.0, mas fixedVersion diz 2.0.0 (já instalado)
         boolean result = provisioner.ensureVersion("1.0.0");
@@ -329,17 +395,35 @@ class WildflyProvisionerTest {
         assertThat(result).isTrue();
         verify(metadataClient).resolveLatestVersion(any(), any(), any(), any(), any(), any());
         assertThat(wildflyHome.resolve(".wildfly-version")).hasContent(VERSION);
+        assertThat(wildflyHome.resolve(".wildfly-sha1")).hasContent(REMOTE_SHA1);
     }
 
     @Test
-    void ensureLatestVersion_quandoFixedVersionDefinida_naoConsultaReposilite() throws Exception {
+    void ensureLatestVersion_quandoFixedVersionDefinida_naoConsultaLatestVersion() throws Exception {
         setField(provisioner, "fixedVersion", Optional.of(VERSION));
-        Files.writeString(wildflyHome.resolve(".wildfly-version"), VERSION);
+        Files.writeString(wildflyHome.resolve(".wildfly-sha1"), REMOTE_SHA1);
+        // checksumReader retorna REMOTE_SHA1 → SHA-1 confere, sem download
 
         boolean result = provisioner.ensureLatestVersion(msg -> {});
 
         assertThat(result).isFalse();
-        verifyNoInteractions(metadataClient);
+        verify(metadataClient, never()).resolveLatestVersion(any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(zsync);
+    }
+
+    @Test
+    void ensureLatestVersion_quandoFixedVersionDefinidaENovaSnapshot_reinstala() throws Exception {
+        // SHA-1 remoto difere do local → nova build disponível
+        setField(provisioner, "fixedVersion", Optional.of(VERSION));
+        Files.writeString(wildflyHome.resolve(".wildfly-sha1"), OTHER_SHA1);
+        mockZsyncComZip(VERSION);
+
+        boolean result = provisioner.ensureLatestVersion(msg -> {});
+
+        assertThat(result).isTrue();
+        verify(metadataClient, never()).resolveLatestVersion(any(), any(), any(), any(), any(), any());
+        assertThat(wildflyHome.resolve(".wildfly-version")).hasContent(VERSION);
+        assertThat(wildflyHome.resolve(".wildfly-sha1")).hasContent(REMOTE_SHA1);
     }
 
     // ── downloadOnly ──────────────────────────────────────────────────────────

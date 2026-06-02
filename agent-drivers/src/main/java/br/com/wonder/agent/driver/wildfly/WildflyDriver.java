@@ -238,13 +238,23 @@ public class WildflyDriver implements RuntimeDriver {
     @Override
     public boolean forceKill() {
         OptionalLong pid = findWildflyPid();
+        if (pid.isEmpty()) {
+            // ProcessHandle.allProcesses() pode não enxergar a command line no Windows —
+            // fallback via wmic para encontrar o PID pelo path do jboss-modules.jar.
+            pid = findWildflyPidViaWmic();
+        }
         if (pid.isPresent()) {
             log.warn("forceKill: matando processo WildFly PID={}", pid.getAsLong());
         } else {
             log.warn("forceKill: nenhum processo WildFly encontrado (pode já estar parado)");
         }
         try {
-            pid.ifPresent(p -> ProcessHandle.of(p).ifPresent(ProcessHandle::destroyForcibly));
+            if (pid.isPresent()) {
+                long p = pid.getAsLong();
+                ProcessHandle.of(p).ifPresent(ProcessHandle::destroyForcibly);
+                // Fallback taskkill caso destroyForcibly não funcione (ex: sem permissão)
+                killViaTaskkill(p);
+            }
             boolean stopped = waitForState(RuntimeState.STOPPED, 15);
             if (!stopped) {
                 log.error("forceKill: processo não terminou em 15s — PID={}", pid.isPresent() ? pid.getAsLong() : "desconhecido");
@@ -253,6 +263,44 @@ public class WildflyDriver implements RuntimeDriver {
         } catch (Exception e) {
             log.error("forceKill falhou: {}", e.getMessage(), e);
             return false;
+        }
+    }
+
+    // Usa wmic para encontrar o PID do java.exe que carrega jboss-modules.jar deste wildflyHome.
+    // Necessário porque ProcessHandle.allProcesses() não consegue ler commandLine() no Windows
+    // quando rodando como Native Image ou sem privilégios suficientes.
+    private OptionalLong findWildflyPidViaWmic() {
+        if (!isLinux()) {
+            try {
+                String home = Path.of(wildflyHome).toAbsolutePath().toString().replace("\\", "\\\\");
+                String filter = "commandline like '%jboss-modules%' and commandline like '%" + home + "%'";
+                Process p = new ProcessBuilder("wmic", "process", "where", filter, "get", "ProcessId", "/VALUE")
+                        .start();
+                String out = new String(p.getInputStream().readAllBytes()).trim();
+                p.waitFor();
+                for (String line : out.split("[\\r\\n]+")) {
+                    if (line.startsWith("ProcessId=")) {
+                        String val = line.substring("ProcessId=".length()).trim();
+                        if (!val.isBlank()) {
+                            log.debug("findWildflyPidViaWmic: PID={}", val);
+                            return OptionalLong.of(Long.parseLong(val));
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("findWildflyPidViaWmic falhou: {}", e.getMessage());
+            }
+        }
+        return OptionalLong.empty();
+    }
+
+    private void killViaTaskkill(long pid) {
+        if (isLinux()) return;
+        try {
+            new ProcessBuilder("taskkill", "/F", "/PID", String.valueOf(pid)).start().waitFor();
+            log.debug("taskkill /F /PID {} executado", pid);
+        } catch (Exception e) {
+            log.debug("taskkill falhou: {}", e.getMessage());
         }
     }
 

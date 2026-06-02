@@ -1,6 +1,9 @@
 package br.com.wonder.agent.core.provision;
 
+import br.com.wonder.agent.core.download.ZsyncChecksumReader;
 import br.com.wonder.agent.core.download.ZsyncDownloadHelper;
+import br.com.wonder.agent.model.driver.RuntimeDriver;
+import br.com.wonder.agent.model.state.RuntimeState;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +42,7 @@ public class WildflyProvisioner {
     static final String ARTIFACT_ID = "wildfly-provisioning";
     private static final String CLASSIFIER = "dist";
     private static final String VERSION_MARKER = ".wildfly-version";
+    private static final String SHA_MARKER = ".wildfly-sha1";
 
     @ConfigProperty(name = "download.repository.url")
     String repositoryUrl;
@@ -54,6 +58,12 @@ public class WildflyProvisioner {
 
     @ConfigProperty(name = "driver.wildfly.home")
     String wildflyHome;
+
+    @ConfigProperty(name = "driver.wildfly.management-port", defaultValue = "9990")
+    int managementPort;
+
+    @ConfigProperty(name = "driver.wildfly.stop-timeout-seconds", defaultValue = "60")
+    int stopTimeoutSeconds;
 
     // Versão fixada via .env — WILDFLY_PROVISIONING_VERSION=x.y
     // Se ausente, usa a versão passada pelo servidor central ou resolvida do Reposilite.
@@ -79,12 +89,21 @@ public class WildflyProvisioner {
     @Inject
     ReposiliteMetadataClient metadataClient;
 
+    @Inject
+    ZsyncChecksumReader zsyncChecksumReader;
+
+    @Inject
+    RuntimeDriver driver;
+
     WildflyProvisioner() {}
 
     // visível para testes
-    WildflyProvisioner(ZsyncDownloadHelper zsyncHelper, ReposiliteMetadataClient metadataClient) {
+    WildflyProvisioner(ZsyncDownloadHelper zsyncHelper, ReposiliteMetadataClient metadataClient,
+                       ZsyncChecksumReader zsyncChecksumReader, RuntimeDriver driver) {
         this.zsyncHelper = zsyncHelper;
         this.metadataClient = metadataClient;
+        this.zsyncChecksumReader = zsyncChecksumReader;
+        this.driver = driver;
     }
 
     /**
@@ -104,19 +123,40 @@ public class WildflyProvisioner {
     public boolean ensureVersion(String desiredVersion, Consumer<String> progress) throws ProvisioningException {
         String targetVersion = resolveVersion(desiredVersion);
 
-        String installed = readInstalledVersion();
-        if (targetVersion.equals(installed)) {
-            log.debug("WildFly já está na versão {} — nenhuma ação necessária", targetVersion);
+        // Para SNAPSHOTs o arquivo real tem timestamp no nome — resolve o fileValue antes de construir a URL do .zsync
+        String fileValue = metadataClient.resolveSnapshotValue(
+                repositoryUrl, repoPath, GROUP_PATH, ARTIFACT_ID,
+                targetVersion, CLASSIFIER, "zip", username, password.orElse(""));
+
+        String zsyncUrl = buildZipUrl(targetVersion, fileValue) + ".zsync";
+        Optional<String> remoteSha1 = zsyncChecksumReader.readSha1(zsyncUrl);
+        String localSha1 = readInstalledSha1();
+
+        if (remoteSha1.isPresent() && remoteSha1.get().equals(localSha1)) {
+            log.debug("WildFly {} já está na build atual (SHA-1 confere) — nenhuma ação necessária", targetVersion);
             return false;
         }
 
-        log.info("WildFly desatualizado: instalado={}, desejado={} — iniciando provisionamento",
-                installed, targetVersion);
+        String installed = readInstalledVersion();
+        if (remoteSha1.isEmpty() && targetVersion.equals(installed)) {
+            // SHA-1 remoto indisponível e versão lógica bate — assume instalado correto
+            log.debug("WildFly {} instalado e SHA-1 remoto indisponível — assumindo atualizado", targetVersion);
+            return false;
+        }
 
-        Path zipFile = downloadZip(targetVersion, progress);
+        log.info("WildFly desatualizado: instalado={} sha1Local={} sha1Remoto={} — iniciando provisionamento",
+                installed, localSha1 != null ? localSha1.substring(0, 8) + "..." : "ausente",
+                remoteSha1.map(s -> s.substring(0, 8) + "...").orElse("indisponível"));
+
+        Path zipFile = downloadZipByFileValue(targetVersion, fileValue, progress);
+        stopRuntimeIfRunning(progress);
         extractZip(zipFile, Path.of(wildflyHome));
         setupManagementUser(progress);
         writeInstalledVersion(targetVersion);
+        remoteSha1.ifPresent(sha1 -> {
+            try { writeInstalledSha1(sha1); }
+            catch (ProvisioningException e) { log.warn("Não foi possível gravar {}: {}", SHA_MARKER, e.getMessage()); }
+        });
 
         log.info("WildFly {} instalado com sucesso em {}", targetVersion, wildflyHome);
         return true;
@@ -193,6 +233,44 @@ public class WildflyProvisioner {
     }
 
     // ── privados ────────────────────────────────────────────────────────────────
+
+    private void stopRuntimeIfRunning(Consumer<String> progress) {
+        // Usa checagem de porta em vez de detectState() para contornar limitação do
+        // ProcessHandle.allProcesses() no Native Image Windows (commandLine() retorna empty).
+        if (!isManagementPortOpen()) return;
+        progress.accept("Parando WildFly antes de extrair nova versão...");
+        log.info("Porta de management aberta — parando WildFly antes do provisionamento");
+        driver.stop();
+        // Aguarda a porta fechar usando o mesmo timeout do driver.
+        // Se não fechar no tempo, tenta forceKill e aguarda mais 15s.
+        if (!waitForPortClose(stopTimeoutSeconds)) {
+            log.warn("WildFly não parou em {}s via stop() — tentando forceKill", stopTimeoutSeconds);
+            progress.accept("  Timeout de stop — forçando encerramento...");
+            driver.forceKill();
+            if (!waitForPortClose(15)) {
+                log.error("WildFly ainda na porta de management após forceKill — extração pode falhar");
+                progress.accept("  AVISO: WildFly não confirmou encerramento — tentando extração mesmo assim");
+            }
+        }
+    }
+
+    private boolean isManagementPortOpen() {
+        try (var socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress("localhost", managementPort), 1000);
+            return true;
+        } catch (java.io.IOException e) {
+            return false;
+        }
+    }
+
+    // Aguarda a porta fechar por até timeoutSeconds. Retorna true se fechou, false se expirou.
+    private boolean waitForPortClose(int timeoutSeconds) {
+        for (int i = 0; i < timeoutSeconds; i++) {
+            if (!isManagementPortOpen()) return true;
+            try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
+        }
+        return false;
+    }
 
     /**
      * Cria o usuário admin escrevendo diretamente no mgmt-users.properties,
@@ -322,14 +400,17 @@ public class WildflyProvisioner {
     }
 
     Path downloadZip(String version, Consumer<String> progress) throws ProvisioningException {
-        // Para SNAPSHOTs, resolve o valor concreto (timestamp+build) do arquivo no repositório
         String fileValue = metadataClient.resolveSnapshotValue(
                 repositoryUrl, repoPath, GROUP_PATH, ARTIFACT_ID,
                 version, CLASSIFIER, "zip", username, password.orElse(""));
+        return downloadZipByFileValue(version, fileValue, progress);
+    }
 
+    // Baixa o ZIP com fileValue já resolvido, evitando segunda chamada ao repositório.
+    private Path downloadZipByFileValue(String version, String fileValue, Consumer<String> progress)
+            throws ProvisioningException {
         String zipUrl = buildZipUrl(version, fileValue);
         String zsyncUrl = zipUrl + ".zsync";
-        // O arquivo local sempre usa o nome canônico (versão lógica), não o timestamp
         String filename = ARTIFACT_ID + "-" + version + "-" + CLASSIFIER + ".zip";
         Path outFile = Path.of(tempDir).resolve(filename);
 
@@ -448,6 +529,26 @@ public class WildflyProvisioner {
         try {
             Files.createDirectories(marker.getParent());
             Files.writeString(marker, version);
+        } catch (IOException e) {
+            throw new ProvisioningException("Não foi possível escrever " + marker, e);
+        }
+    }
+
+    String readInstalledSha1() {
+        Path marker = Path.of(wildflyHome, SHA_MARKER);
+        try {
+            return Files.exists(marker) ? Files.readString(marker).trim() : null;
+        } catch (IOException e) {
+            log.warn("Não foi possível ler {}: {}", marker, e.getMessage());
+            return null;
+        }
+    }
+
+    void writeInstalledSha1(String sha1) throws ProvisioningException {
+        Path marker = Path.of(wildflyHome, SHA_MARKER);
+        try {
+            Files.createDirectories(marker.getParent());
+            Files.writeString(marker, sha1);
         } catch (IOException e) {
             throw new ProvisioningException("Não foi possível escrever " + marker, e);
         }
