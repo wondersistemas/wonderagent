@@ -1,10 +1,6 @@
 package br.com.wonder.agent.core.provision;
 
-import br.com.wonder.agent.core.download.DownloadProgressObserver;
-import com.salesforce.zsync.Zsync;
-import com.salesforce.zsync.ZsyncException;
-import com.salesforce.zsync.http.Credentials;
-import com.squareup.okhttp.OkHttpClient;
+import br.com.wonder.agent.core.download.ZsyncDownloadHelper;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -12,8 +8,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,10 +15,8 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.Enumeration;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -81,25 +73,17 @@ public class WildflyProvisioner {
     @ConfigProperty(name = "quarkus.datasource.password", defaultValue = "")
     Optional<String> dbPassword;
 
-    private final Zsync zsync;
+    @Inject
+    ZsyncDownloadHelper zsyncHelper;
 
     @Inject
     ReposiliteMetadataClient metadataClient;
 
-    WildflyProvisioner() {
-        OkHttpClient http = new OkHttpClient();
-        http.setReadTimeout(30, TimeUnit.SECONDS);
-        http.setWriteTimeout(30, TimeUnit.SECONDS);
-        this.zsync = new Zsync(http);
-    }
+    WildflyProvisioner() {}
 
     // visível para testes
-    WildflyProvisioner(Zsync zsync) {
-        this.zsync = zsync;
-    }
-
-    WildflyProvisioner(Zsync zsync, ReposiliteMetadataClient metadataClient) {
-        this.zsync = zsync;
+    WildflyProvisioner(ZsyncDownloadHelper zsyncHelper, ReposiliteMetadataClient metadataClient) {
+        this.zsyncHelper = zsyncHelper;
         this.metadataClient = metadataClient;
     }
 
@@ -345,83 +329,15 @@ public class WildflyProvisioner {
 
         String zipUrl = buildZipUrl(version, fileValue);
         String zsyncUrl = zipUrl + ".zsync";
-        String host = URI.create(zipUrl).getHost();
         // O arquivo local sempre usa o nome canônico (versão lógica), não o timestamp
         String filename = ARTIFACT_ID + "-" + version + "-" + CLASSIFIER + ".zip";
-
-        Path outDir = Path.of(tempDir);
-        try {
-            Files.createDirectories(outDir);
-        } catch (IOException e) {
-            throw new ProvisioningException("Não foi possível criar diretório temporário: " + outDir, e);
-        }
-
-        Path outFile = outDir.resolve(filename);
-
-        Zsync.Options options = new Zsync.Options()
-                .setOutputFile(outFile)
-                .putCredentials(host, new Credentials(username, password.orElse("")));
-
-        if (Files.exists(outFile)) {
-            log.debug("ZIP existente encontrado, usando como base para delta: {}", outFile);
-            options = options.addInputFile(outFile);
-            progress.accept("  Arquivo anterior encontrado — usando delta (zsync)");
-        } else {
-            progress.accept("  Nenhuma versão anterior em cache — download completo");
-        }
+        Path outFile = Path.of(tempDir).resolve(filename);
 
         log.info("Baixando WildFly {} via zsync — {}", version, zsyncUrl);
-        DownloadProgressObserver observer = new DownloadProgressObserver(progress);
         try {
-            progress.accept("  Transferindo...");
-            zsync.zsync(URI.create(zsyncUrl), options, observer);
-            observer.reportFinal();
-            return outFile;
-        } catch (ZsyncException e) {
-            log.warn("zsync falhou ({}); usando download HTTP direto do ZIP: {}", e.getMessage(), zipUrl);
-            progress.accept("  zsync indisponível — download HTTP direto do ZIP");
-            return downloadZipDirect(zipUrl, outFile, progress);
-        }
-    }
-
-    // Fallback: download HTTP direto quando o .zsync não existe no servidor
-    private Path downloadZipDirect(String zipUrl, Path outFile, Consumer<String> progress)
-            throws ProvisioningException {
-        try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(zipUrl).toURL().openConnection();
-            conn.setConnectTimeout(30_000);
-            conn.setReadTimeout(120_000);
-            if (username != null && !username.isBlank()) {
-                String cred = username + ":" + password.orElse("");
-                conn.setRequestProperty("Authorization",
-                        "Basic " + Base64.getEncoder().encodeToString(cred.getBytes()));
-            }
-            int status = conn.getResponseCode();
-            if (status == HttpURLConnection.HTTP_UNAUTHORIZED) {
-                throw new ProvisioningException("Acesso negado ao baixar " + zipUrl + " (HTTP 401)", null);
-            }
-            if (status == HttpURLConnection.HTTP_NOT_FOUND) {
-                throw new ProvisioningException("ZIP não encontrado: " + zipUrl + " (HTTP 404)", null);
-            }
-            if (status < 200 || status >= 300) {
-                throw new ProvisioningException(
-                        "Falha HTTP " + status + " ao baixar " + zipUrl, null);
-            }
-            long total = conn.getContentLengthLong();
-            try (InputStream in = conn.getInputStream()) {
-                Files.copy(in, outFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-            if (total > 0) {
-                progress.accept("  Download concluído: " + (total / 1024 / 1024) + " MB");
-            } else {
-                progress.accept("  Download concluído");
-            }
-            conn.disconnect();
-            return outFile;
-        } catch (ProvisioningException e) {
-            throw e;
-        } catch (IOException e) {
-            throw new ProvisioningException("Falha no download HTTP de " + zipUrl, e);
+            return zsyncHelper.downloadNoPad(zsyncUrl, zipUrl, outFile, progress);
+        } catch (ZsyncDownloadHelper.DownloadHelperException e) {
+            throw new ProvisioningException(e.getMessage(), e.getCause());
         }
     }
 

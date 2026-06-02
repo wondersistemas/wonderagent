@@ -24,6 +24,7 @@ class ArtifactDownloaderTest {
     @TempDir Path tempDir;
 
     Zsync zsync;
+    ZsyncDownloadHelper helper;
     ArtifactDownloader downloader;
 
     static final String WAR_URL =
@@ -34,7 +35,10 @@ class ArtifactDownloaderTest {
     @BeforeEach
     void setUp() throws Exception {
         zsync = mock(Zsync.class);
-        downloader = new ArtifactDownloader(zsync);
+        helper = new ZsyncDownloadHelper(zsync, "reader", Optional.of("secret"));
+        setField(helper, "username", "reader");
+        setField(helper, "password", Optional.of("secret"));
+        downloader = new ArtifactDownloader(helper);
         setField(downloader, "tempDir", tempDir.toString());
         setField(downloader, "username", "reader");
         setField(downloader, "password", Optional.of("secret"));

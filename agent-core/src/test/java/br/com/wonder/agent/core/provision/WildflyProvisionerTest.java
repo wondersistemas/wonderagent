@@ -1,5 +1,6 @@
 package br.com.wonder.agent.core.provision;
 
+import br.com.wonder.agent.core.download.ZsyncDownloadHelper;
 import com.salesforce.zsync.Zsync;
 import com.salesforce.zsync.ZsyncException;
 import com.salesforce.zsync.http.Credentials;
@@ -32,6 +33,7 @@ class WildflyProvisionerTest {
     @TempDir Path wildflyHome;
 
     Zsync zsync;
+    ZsyncDownloadHelper helper;
     ReposiliteMetadataClient metadataClient;
     WildflyProvisioner provisioner;
 
@@ -43,7 +45,10 @@ class WildflyProvisionerTest {
     void setUp() throws Exception {
         zsync = mock(Zsync.class);
         metadataClient = mock(ReposiliteMetadataClient.class);
-        provisioner = new WildflyProvisioner(zsync, metadataClient);
+        helper = new ZsyncDownloadHelper(zsync, "reader", Optional.of("secret"));
+        setField(helper, "username", "reader");
+        setField(helper, "password", Optional.of("secret"));
+        provisioner = new WildflyProvisioner(helper, metadataClient);
         setField(provisioner, "repositoryUrl", REPO_URL);
         setField(provisioner, "repoPath", REPO_PATH);
         setField(provisioner, "username", "reader");
@@ -87,9 +92,7 @@ class WildflyProvisionerTest {
     @Test
     void ensureVersion_quandoVersaoDiferente_baixaEExtrai() throws Exception {
         Files.writeString(wildflyHome.resolve(".wildfly-version"), "0.9.0");
-
-        Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
+        mockZsyncComZip(VERSION);
 
         boolean result = provisioner.ensureVersion(VERSION);
 
@@ -101,8 +104,7 @@ class WildflyProvisionerTest {
     @Test
     void ensureVersion_quandoSemVersaoInstalada_baixaEExtrai() throws Exception {
         // nenhum .wildfly-version presente
-        Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
+        mockZsyncComZip(VERSION);
 
         boolean result = provisioner.ensureVersion(VERSION);
 
@@ -128,8 +130,7 @@ class WildflyProvisionerTest {
 
     @Test
     void ensureVersion_passaZsyncUrlCorreta() throws Exception {
-        Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
+        mockZsyncComZip(VERSION);
 
         provisioner.ensureVersion(VERSION);
 
@@ -140,8 +141,7 @@ class WildflyProvisionerTest {
 
     @Test
     void ensureVersion_passaCredenciaisParaHost() throws Exception {
-        Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
+        mockZsyncComZip(VERSION);
 
         provisioner.ensureVersion(VERSION);
 
@@ -158,14 +158,26 @@ class WildflyProvisionerTest {
     void ensureVersion_quandoZipExistente_adicionaComoInputFile() throws Exception {
         String filename = "wildfly-provisioning-" + VERSION + "-dist.zip";
         Path existing = tempDir.resolve(filename);
-        criarZipFakeEm(existing, VERSION);
-        when(zsync.zsync(any(), any(), any())).thenReturn(existing);
+        // Arquivo precisa ser múltiplo de 4096 para ser aceito como base de delta
+        byte[] block = new byte[4096];
+        java.util.Arrays.fill(block, (byte) 0x42);
+        Files.write(existing, block);
+        // O helper renomeia o arquivo para .zs-old e passa como input;
+        // o mock deve gravar um ZIP válido no outFile para que extractZip funcione
+        when(zsync.zsync(any(), any(), any())).thenAnswer(inv -> {
+            Zsync.Options opts = inv.getArgument(1);
+            Path outFile = opts.getOutputFile();
+            criarZipFakeEm(outFile, VERSION);
+            return outFile;
+        });
 
         provisioner.ensureVersion(VERSION);
 
         ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
         verify(zsync).zsync(any(), optCaptor.capture(), any());
-        assertThat(optCaptor.getValue().getInputFiles()).contains(existing);
+        // O helper renomeia o ZIP para .zs-old antes de passar como input
+        Path zsOld = tempDir.resolve(filename + ".zs-old");
+        assertThat(optCaptor.getValue().getInputFiles()).contains(zsOld);
     }
 
     // ── falha de download (zsync + HTTP) ─────────────────────────────────────
@@ -230,17 +242,20 @@ class WildflyProvisionerTest {
 
     @Test
     void ensureVersion_extraiConteudoDoZip() throws Exception {
-        Path fakeZip = tempDir.resolve("wildfly-provisioning-" + VERSION + "-dist.zip");
-        try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(fakeZip))) {
-            ZipEntry dir = new ZipEntry("wildfly/bin/");
-            zos.putNextEntry(dir);
-            zos.closeEntry();
-            ZipEntry file = new ZipEntry("wildfly/bin/standalone.sh");
-            zos.putNextEntry(file);
-            zos.write("#!/bin/sh\n".getBytes());
-            zos.closeEntry();
-        }
-        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
+        when(zsync.zsync(any(), any(), any())).thenAnswer(inv -> {
+            Zsync.Options opts = inv.getArgument(1);
+            Path outFile = opts.getOutputFile();
+            try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(outFile))) {
+                ZipEntry dir = new ZipEntry("wildfly/bin/");
+                zos.putNextEntry(dir);
+                zos.closeEntry();
+                ZipEntry file = new ZipEntry("wildfly/bin/standalone.sh");
+                zos.putNextEntry(file);
+                zos.write("#!/bin/sh\n".getBytes());
+                zos.closeEntry();
+            }
+            return outFile;
+        });
 
         provisioner.ensureVersion(VERSION);
 
@@ -307,8 +322,7 @@ class WildflyProvisionerTest {
     void ensureLatestVersion_resolveVersaoDoReposiliteEInstala() throws Exception {
         when(metadataClient.resolveLatestVersion(any(), any(), any(), any(), any(), any()))
                 .thenReturn(VERSION);
-        Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
+        mockZsyncComZip(VERSION);
 
         boolean result = provisioner.ensureLatestVersion(msg -> {});
 
@@ -332,8 +346,7 @@ class WildflyProvisionerTest {
 
     @Test
     void downloadOnly_comVersao_baixaSemExtrair() throws Exception {
-        Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
+        mockZsyncComZip(VERSION);
 
         Path result = provisioner.downloadOnly(VERSION, msg -> {});
 
@@ -346,8 +359,7 @@ class WildflyProvisionerTest {
     void downloadOnly_semVersao_resolveLatestEBaixa() throws Exception {
         when(metadataClient.resolveLatestVersion(any(), any(), any(), any(), any(), any()))
                 .thenReturn(VERSION);
-        Path fakeZip = criarZipFake(tempDir, VERSION);
-        when(zsync.zsync(any(), any(), any())).thenReturn(fakeZip);
+        mockZsyncComZip(VERSION);
 
         provisioner.downloadOnly(msg -> {});
 
@@ -474,6 +486,21 @@ class WildflyProvisionerTest {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Configura o mock do zsync para escrever um ZIP válido no outFile e retorná-lo.
+     * Necessário porque o helper renomeia o arquivo pré-existente para .zs-old antes
+     * de chamar zsync — se o mock retornasse o path original ele estaria inválido.
+     */
+    private void mockZsyncComZip(String version) throws Exception {
+        String filename = "wildfly-provisioning-" + version + "-dist.zip";
+        when(zsync.zsync(any(), any(), any())).thenAnswer(inv -> {
+            Zsync.Options opts = inv.getArgument(1);
+            Path outFile = opts.getOutputFile();
+            criarZipFakeEm(outFile, version);
+            return outFile;
+        });
+    }
 
     private Path criarZipFake(Path dir, String version) throws Exception {
         Path zip = dir.resolve("wildfly-provisioning-" + version + "-dist.zip");
