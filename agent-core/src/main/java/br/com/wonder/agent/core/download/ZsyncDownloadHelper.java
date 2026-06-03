@@ -131,7 +131,9 @@ public class ZsyncDownloadHelper {
                     if (multipartWarned.compareAndSet(false, true)) {
                         log.warn("Servidor não suporta multipart ranges — cada bloco será requisitado individualmente (sem impacto na integridade do download)");
                     }
-                    resp.body().close();
+                    // close() via discard() trava se o body for grande ou o servidor for lento.
+                    // Fechar o source diretamente aborta a socket sem ler o restante.
+                    try { resp.body().source().close(); } catch (Exception ignored) {}
                     com.squareup.okhttp.Request singleReq = req.newBuilder()
                             .header("Range", firstRange)
                             .build();

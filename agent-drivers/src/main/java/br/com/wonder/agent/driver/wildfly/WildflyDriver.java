@@ -448,7 +448,8 @@ public class WildflyDriver implements RuntimeDriver {
     }
 
     protected boolean isProcessAlive() {
-        return findWildflyPid().isPresent();
+        if (findWildflyPid().isPresent()) return true;
+        return findWildflyPidViaWmic().isPresent();
     }
 
     private boolean isManagementPortOpen() {
@@ -607,6 +608,9 @@ public class WildflyDriver implements RuntimeDriver {
 
     private boolean waitForState(RuntimeState expected, int timeoutSeconds) {
         long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+        // Janela de graça: STOPPED logo após disparar o processo é esperado enquanto a JVM carrega.
+        // Só tratamos STOPPED/PARTIAL como terminais após esta janela.
+        long earlyExitAllowedAt = System.currentTimeMillis() + 6_000;
         RuntimeState last = null;
         while (System.currentTimeMillis() < deadline) {
             RuntimeState current = detectState();
@@ -615,6 +619,14 @@ public class WildflyDriver implements RuntimeDriver {
                 last = current;
             }
             if (current == expected) return true;
+            // Ao aguardar RUNNING: STOPPED e PARTIAL são terminais — processo morreu ou deploy falhou.
+            // Continuar esperando só faz sentido em HUNG/UNKNOWN (transitório).
+            if (expected == RuntimeState.RUNNING
+                    && System.currentTimeMillis() > earlyExitAllowedAt
+                    && (current == RuntimeState.STOPPED || current == RuntimeState.PARTIAL)) {
+                log.warn("waitForState: estado terminal {} detectado enquanto aguardava {} — abortando", current, expected);
+                return false;
+            }
             try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
         }
         log.warn("waitForState: timeout após {}s aguardando {} — estado atual: {}", timeoutSeconds, expected, last);
