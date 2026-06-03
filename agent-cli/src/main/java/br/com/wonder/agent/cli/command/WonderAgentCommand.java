@@ -46,6 +46,8 @@ import java.nio.file.Path;
         WonderAgentCommand.DownloadServerCommand.class,
         WonderAgentCommand.ApplyServerCommand.class,
         WonderAgentCommand.ProvisionarCommand.class,
+        WonderAgentCommand.StopWildflyCommand.class,
+        WonderAgentCommand.StartWildflyCommand.class,
     }
 )
 public class WonderAgentCommand implements Runnable {
@@ -364,6 +366,50 @@ public class WonderAgentCommand implements Runnable {
             } catch (WildflyProvisioner.ProvisioningException e) {
                 System.err.println("ERRO: " + e.getMessage());
                 log.error("Falha no provision", e);
+            }
+        }
+    }
+
+    @Unremovable
+    @ApplicationScoped
+    @Command(name = "stop-wildfly", mixinStandardHelpOptions = true,
+             description = "Para o WildFly graciosamente. Se não parar no timeout, força encerramento via forceKill.")
+    static class StopWildflyCommand implements Runnable {
+        @Inject RuntimeDriver driver;
+
+        @Override
+        public void run() {
+            System.out.println("Parando WildFly...");
+            boolean stopped = driver.stop();
+            if (stopped) {
+                System.out.println("WildFly parado com sucesso.");
+            } else {
+                System.out.println("stop() expirou — tentando forceKill...");
+                boolean killed = driver.forceKill();
+                if (killed) {
+                    System.out.println("WildFly encerrado forçadamente.");
+                } else {
+                    System.err.println("AVISO: WildFly pode ainda estar rodando — verifique manualmente.");
+                }
+            }
+        }
+    }
+
+    @Unremovable
+    @ApplicationScoped
+    @Command(name = "start-wildfly", mixinStandardHelpOptions = true,
+             description = "Inicia o WildFly e aguarda confirmar RUNNING dentro do timeout configurado.")
+    static class StartWildflyCommand implements Runnable {
+        @Inject RuntimeDriver driver;
+
+        @Override
+        public void run() {
+            System.out.println("Iniciando WildFly...");
+            boolean started = driver.start();
+            if (started) {
+                System.out.println("WildFly iniciado com sucesso.");
+            } else {
+                System.err.println("ERRO: WildFly não confirmou RUNNING dentro do timeout — verifique os logs.");
             }
         }
     }
