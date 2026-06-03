@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -29,7 +30,10 @@ import java.util.function.Consumer;
  * WildflyProvisioner.
  *
  * Centraliza:
- * - Criação do OkHttpClient com interceptor para multipart ranges (workaround Reposilite)
+ * - Criação do OkHttpClient com interceptores para workarounds do Reposilite
+ * - URL redirect: campo URL: do .zsync aponta para nome sem timestamp; interceptor redireciona
+ *   para a URL concreta com timestamp que o caller passa via zipUrl
+ * - Multipart range workaround: Reposilite não suporta ranges multiplos; re-emite um por vez
  * - Locale.ENGLISH para parsing de MTime no zsync4j
  * - Verificação de alinhamento de bloco antes de usar arquivo como base delta
  * - Renomeação para .zs-old antes de passar como input (evita corrupção input==output)
@@ -48,21 +52,69 @@ public class ZsyncDownloadHelper {
 
     private final Zsync zsync;
 
+    // URL concreta do ZIP atual (com timestamp para SNAPSHOTs). O interceptor usa para
+    // redirecionar requests que o zsync4j constrói a partir do campo URL: do .zsync —
+    // que contém o nome sem timestamp (ex: wildfly-provisioning-1.0.0-SNAPSHOT-dist.zip)
+    // enquanto o Reposilite só serve o arquivo com timestamp.
+    private final AtomicReference<String> currentZipUrl = new AtomicReference<>();
+
     ZsyncDownloadHelper() {
         // zsync4j usa SimpleDateFormat sem Locale para parsear MTime — bug da biblioteca.
         // Forçar Locale.ENGLISH garante que nomes de mês RFC 2822 sejam reconhecidos.
         Locale.setDefault(Locale.ENGLISH);
+        this.zsync = new Zsync(buildClient(currentZipUrl));
+    }
+
+    ZsyncDownloadHelper(Zsync zsync) {
+        this.zsync = zsync;
+    }
+
+    public ZsyncDownloadHelper(Zsync zsync, String username, Optional<String> password) {
+        this.zsync = zsync;
+        this.username = username;
+        this.password = password;
+    }
+
+    // Cria o OkHttpClient com dois interceptores:
+    // 1. URL redirect: o campo URL: do .zsync gerado no build contém o nome sem timestamp
+    //    (ex: wildfly-provisioning-1.0.0-SNAPSHOT-dist.zip), mas o Reposilite só serve o
+    //    arquivo com timestamp (ex: wildfly-provisioning-1.0.0-20260603.142417-23-dist.zip).
+    //    O interceptor substitui a URL da request quando ela bate com o padrão SNAPSHOT-sem-timestamp
+    //    e o caller já nos informou a URL concreta via currentZipUrl.
+    // 2. Multipart range workaround: Reposilite não suporta multipart ranges — re-emite
+    //    como range simples forçando o zsync4j a iterar um range por vez.
+    private static OkHttpClient buildClient(AtomicReference<String> currentZipUrl) {
         OkHttpClient client = new OkHttpClient();
         client.setReadTimeout(30, TimeUnit.SECONDS);
         client.setWriteTimeout(30, TimeUnit.SECONDS);
-        // Reposilite não suporta multipart ranges (bytes=a-b,c-d) — responde 200 com
-        // o arquivo inteiro em vez de 206 Partial Content. O zsync4j não consegue processar
-        // isso corretamente. O interceptor detecta essa situação e re-emite como range simples
-        // (bytes=a-b) pegando apenas o primeiro range solicitado, forçando o zsync4j a iterar
-        // um range por vez (menos eficiente, mas correto).
         AtomicBoolean multipartWarned = new AtomicBoolean(false);
         client.interceptors().add(chain -> {
             com.squareup.okhttp.Request req = chain.request();
+
+            // Interceptor 1: redireciona URL sem timestamp para a URL concreta com timestamp.
+            // O zsync4j constrói a URL dos range requests resolvendo o campo URL: do .zsync
+            // relativo à URI do .zsync. Para SNAPSHOTs esse campo contém o nome lógico
+            // (sem timestamp), mas o Reposilite só serve o arquivo com nome concreto.
+            // Só atua em requests ao ZIP (sem .zsync no final) — nunca redireciona o próprio .zsync.
+            if (currentZipUrl != null) {
+                String concreteUrl = currentZipUrl.get();
+                if (concreteUrl != null) {
+                    String reqUrl = req.url().toString();
+                    if (!reqUrl.endsWith(".zsync")) {
+                        String concreteFilename = concreteUrl.substring(concreteUrl.lastIndexOf('/') + 1);
+                        String reqFilename = reqUrl.substring(reqUrl.lastIndexOf('/') + 1);
+                        String concreteBase = concreteUrl.substring(0, concreteUrl.lastIndexOf('/') + 1);
+                        String reqBase = reqUrl.substring(0, reqUrl.lastIndexOf('/') + 1);
+                        if (!reqFilename.equals(concreteFilename) && reqBase.equals(concreteBase)) {
+                            log.debug("zsync URL redirect: {} → {}", reqFilename, concreteFilename);
+                            req = req.newBuilder()
+                                    .url(concreteUrl)
+                                    .build();
+                        }
+                    }
+                }
+            }
+
             String range = req.header("Range");
             log.trace("zsync → Range: {} — {}", range, req.url());
             com.squareup.okhttp.Response resp = chain.proceed(req);
@@ -70,6 +122,8 @@ public class ZsyncDownloadHelper {
                     resp.code(),
                     resp.header("Content-Range", "ausente"),
                     resp.header("Content-Length", "ausente"));
+
+            // Interceptor 2: multipart range workaround.
             if (range != null && resp.code() == 200 && resp.header("Content-Range") == null) {
                 int comma = range.indexOf(',');
                 if (comma > 0) {
@@ -88,17 +142,7 @@ public class ZsyncDownloadHelper {
             }
             return resp;
         });
-        this.zsync = new Zsync(client);
-    }
-
-    ZsyncDownloadHelper(Zsync zsync) {
-        this.zsync = zsync;
-    }
-
-    public ZsyncDownloadHelper(Zsync zsync, String username, Optional<String> password) {
-        this.zsync = zsync;
-        this.username = username;
-        this.password = password;
+        return client;
     }
 
     /**
@@ -120,6 +164,7 @@ public class ZsyncDownloadHelper {
      */
     public Path download(String zsyncUrl, String zipUrl, Path outFile,
                          Consumer<String> progress) throws DownloadHelperException {
+        currentZipUrl.set(zipUrl);
         String host = URI.create(zipUrl).getHost();
         Path zsOld = outFile.resolveSibling(outFile.getFileName() + ".zs-old");
 
@@ -164,6 +209,7 @@ public class ZsyncDownloadHelper {
      */
     public Path downloadNoPad(String zsyncUrl, String zipUrl, Path outFile,
                               Consumer<String> progress) throws DownloadHelperException {
+        currentZipUrl.set(zipUrl);
         String host = URI.create(zipUrl).getHost();
         Path zsOld = outFile.resolveSibling(outFile.getFileName() + ".zs-old");
 
