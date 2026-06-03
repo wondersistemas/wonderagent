@@ -406,8 +406,8 @@ public class WildflyDriver implements RuntimeDriver {
             return;
         }
         if (r1.statusCode() != 401 || user.isEmpty() || pass.isEmpty()) {
-            log.warn("Resposta inesperada do management API ao enviar shutdown: HTTP {}", r1.statusCode());
-            return;
+            throw new IOException("Shutdown via management API falhou: HTTP " + r1.statusCode()
+                    + (user.isEmpty() || pass.isEmpty() ? " (credenciais não configuradas)" : ""));
         }
 
         String wwwAuth = r1.headers().firstValue("WWW-Authenticate").orElse("");
@@ -421,11 +421,11 @@ public class WildflyDriver implements RuntimeDriver {
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
         HttpResponse<Void> r2 = newManagementClient().send(authenticated, HttpResponse.BodyHandlers.discarding());
-        if (r2.statusCode() == 200) {
-            log.info("Comando de shutdown enviado via management API (com autenticação)");
-        } else {
-            log.warn("Resposta inesperada do management API ao enviar shutdown autenticado: HTTP {}", r2.statusCode());
+        if (r2.statusCode() != 200) {
+            throw new IOException("Shutdown via management API falhou após autenticação Digest: HTTP " + r2.statusCode()
+                    + " — verifique WILDFLY_MGMT_USER e WILDFLY_MGMT_PASSWORD");
         }
+        log.info("Comando de shutdown enviado via management API (com autenticação)");
     }
 
     private boolean isLinux() {
