@@ -1,6 +1,7 @@
 package br.com.wonder.agent.core.download;
 
 import br.com.wonder.agent.model.deploy.Artifact;
+import br.com.wonder.agent.model.util.FileChecksum;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -162,9 +163,7 @@ public class ArtifactDownloader {
 
     private void writeSha1Cache(Path warFile) {
         try {
-            byte[] data = Files.readAllBytes(warFile);
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-1");
-            String sha1 = java.util.HexFormat.of().formatHex(digest.digest(data));
+            String sha1 = FileChecksum.sha1(warFile);
             Files.writeString(warFile.resolveSibling(warFile.getFileName() + ".sha1"), sha1);
             log.debug("SHA-1 do WAR em cache: {}", sha1);
         } catch (Exception e) {

@@ -4,6 +4,7 @@ import br.com.wonder.agent.core.download.ZsyncChecksumReader;
 import br.com.wonder.agent.core.download.ZsyncDownloadHelper;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
+import br.com.wonder.agent.model.util.FileChecksum;
 import com.salesforce.zsync.Zsync;
 import com.salesforce.zsync.ZsyncException;
 import com.salesforce.zsync.http.Credentials;
@@ -482,9 +483,11 @@ class WildflyProvisionerTest {
 
     @Test
     void applyFromCache_quandoJaInstalado_retornaFalse() throws Exception {
-        Files.writeString(wildflyHome.resolve(".wildfly-version"), VERSION);
         Path zipFile = tempDir.resolve("wildfly-provisioning-" + VERSION + "-dist.zip");
         criarZipFakeEm(zipFile, VERSION);
+        String sha1 = FileChecksum.sha1OrNull(zipFile);
+        Files.writeString(wildflyHome.resolve(".wildfly-version"), VERSION);
+        Files.writeString(wildflyHome.resolve(".wildfly-sha1"), sha1);
 
         boolean result = provisioner.applyFromCache(VERSION, msg -> {});
 

@@ -5,6 +5,7 @@ import br.com.wonder.agent.model.deploy.DeployResult;
 import br.com.wonder.agent.model.deploy.HealthStatus;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
+import br.com.wonder.agent.model.util.FileChecksum;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Typed;
 import jakarta.inject.Named;
@@ -144,7 +145,7 @@ public class WildflyDriver implements RuntimeDriver {
             Files.copy(artifact.localFile(), target, StandardCopyOption.REPLACE_EXISTING);
 
             Files.writeString(Path.of(deployPath, ".wonder-version"), artifact.version());
-            Files.writeString(Path.of(deployPath, ".wonder-sha1"), sha1Hex(target));
+            Files.writeString(Path.of(deployPath, ".wonder-sha1"), FileChecksum.sha1(target));
 
             log.info("Artefato copiado para {}", target);
             return DeployResult.success(artifact.version(), Duration.between(start, Instant.now()),
@@ -153,16 +154,6 @@ public class WildflyDriver implements RuntimeDriver {
             return DeployResult.failure(artifact.version(), Duration.between(start, Instant.now()),
                     RuntimeState.STOPPED, RuntimeState.STOPPED,
                     "Falha ao copiar artefato: " + e.getMessage());
-        }
-    }
-
-    private static String sha1Hex(Path file) throws IOException {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-1");
-            digest.update(Files.readAllBytes(file));
-            return HexFormat.of().formatHex(digest.digest());
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-1 não disponível", e);
         }
     }
 

@@ -12,8 +12,10 @@ import br.com.wonder.agent.model.deploy.Artifact;
 import br.com.wonder.agent.model.deploy.DeployResult;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
+import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +54,13 @@ public class AgentOrchestrator {
     // Subcomandos single-shot (check, update, deploy) nunca ativam o scheduler.
     private final AtomicBoolean serviceMode = new AtomicBoolean(false);
 
+    private final AtomicBoolean shuttingDown = new AtomicBoolean(false);
+
+    void onShutdown(@Observes ShutdownEvent event) {
+        shuttingDown.set(true);
+        log.debug("Shutdown detectado — novos ciclos de poll serão bloqueados");
+    }
+
     /** Ativa o modo serviço — o scheduler passa a executar os ciclos de poll. */
     public void startServiceMode() {
         serviceMode.set(true);
@@ -79,6 +88,10 @@ public class AgentOrchestrator {
     public void poll() {
         if (!serviceMode.get()) {
             log.debug("Modo serviço inativo — scheduler ignorado");
+            return;
+        }
+        if (shuttingDown.get()) {
+            log.debug("Shutdown em curso — ciclo de poll cancelado");
             return;
         }
         if (!running.compareAndSet(false, true)) {

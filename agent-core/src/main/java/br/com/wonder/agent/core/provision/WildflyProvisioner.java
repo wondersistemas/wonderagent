@@ -4,6 +4,7 @@ import br.com.wonder.agent.core.download.ZsyncChecksumReader;
 import br.com.wonder.agent.core.download.ZsyncDownloadHelper;
 import br.com.wonder.agent.model.driver.RuntimeDriver;
 import br.com.wonder.agent.model.state.RuntimeState;
+import br.com.wonder.agent.model.util.FileChecksum;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -220,7 +221,7 @@ public class WildflyProvisioner {
 
         String targetVersion = version != null ? version : extractVersionFromFilename(zipFile.getFileName().toString());
 
-        String cachedSha1 = sha1OfFile(zipFile);
+        String cachedSha1 = FileChecksum.sha1OrNull(zipFile);
         String installedSha1 = readInstalledSha1();
         log.trace("applyFromCache: zip={} versão={} sha1Cache={} sha1Instalado={}",
                 zipFile.getFileName(), targetVersion,
@@ -253,22 +254,6 @@ public class WildflyProvisioner {
     }
 
     // ── privados ────────────────────────────────────────────────────────────────
-
-    private static String sha1OfFile(Path file) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-1");
-            try (InputStream in = Files.newInputStream(file)) {
-                byte[] buf = new byte[65536];
-                int n;
-                while ((n = in.read(buf)) != -1) md.update(buf, 0, n);
-            }
-            StringBuilder sb = new StringBuilder(40);
-            for (byte b : md.digest()) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) {
-            return null;
-        }
-    }
 
     private void stopRuntimeIfRunning(Consumer<String> progress) {
         // Usa checagem de porta em vez de detectState() para contornar limitação do
