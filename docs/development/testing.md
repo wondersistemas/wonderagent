@@ -10,10 +10,11 @@
   executados manualmente com o profile `integration-tests`
 - Todos os testes são JUnit 5 puro + Mockito — sem `@QuarkusTest`, sem container CDI
 
-## Estrutura por módulo
+## Estrutura dos testes
 
-### agent-model
-Records e enums sem lógica comportamental.
+Testes unitários com `@ExtendWith(MockitoExtension.class)` e `@InjectMocks`. Testes de integração (`*IT`) excluídos do surefire — rodam apenas com `-Pnative` via failsafe.
+
+### model/
 
 | Arquivo | O que testa |
 |---|---|
@@ -22,8 +23,7 @@ Records e enums sem lógica comportamental.
 | `HealthStatusTest` | Factories `ok()` e `unhealthy()` |
 | `RuntimeStateTest` | `needsRecovery()` e `isActionable()` |
 
-### agent-core
-Testes com `@ExtendWith(MockitoExtension.class)` e `@InjectMocks`.
+### core/
 
 | Arquivo | O que testa |
 |---|---|
@@ -39,7 +39,8 @@ setField(orchestrator, "clientId", "cliente-abc");
 setField(orchestrator, "agentVersion", "1.0.0-SNAPSHOT");
 ```
 
-### agent-drivers
+### driver/
+
 | Arquivo | O que testa |
 |---|---|
 | `WildflyDriverDeployTest` | Cópia do WAR, escrita/leitura do `.wonder-version`, arquivo fonte inexistente |
@@ -54,13 +55,10 @@ setField(orchestrator, "agentVersion", "1.0.0-SNAPSHOT");
 ## Executar testes
 
 ```bash
-# Unitários (todos os módulos)
+# Unitários
 mvn test
 
-# Módulo específico
-mvn test -pl agent-core
-
-# Integração (requer WildFly local rodando)
+# Integração (requer Native Image já compilado)
 mvn verify -Pintegration-tests
 ```
 

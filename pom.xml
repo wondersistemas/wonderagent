@@ -171,6 +171,9 @@
           <version>3.3.0</version>
           <configuration>
             <argLine>-Dnet.bytebuddy.experimental=true --add-opens java.base/java.util.zip=ALL-UNNAMED</argLine>
+            <excludes>
+              <exclude>**/*IT.java</exclude>
+            </excludes>
           </configuration>
         </plugin>
       </plugins>
@@ -205,7 +208,12 @@
         <!-- x86-64-v2: requer apenas SSE4.2 (Sandy Bridge 2011+), compatível com servidores de clientes antigos -->
         <!-- Sem esta flag o padrão do GraalVM é x86-64-v3 (AVX2, Haswell+), que não roda em hardware mais velho -->
         <quarkus.native.additional-build-args>-march=compatibility</quarkus.native.additional-build-args>
-        <!-- Flags de reflection/init centralizadas em META-INF/native-image/br.com.wonder/wonderagent/ -->
+      </properties>
+    </profile>
+
+    <profile>
+      <id>integration-tests</id>
+      <properties>
         <!-- Banco de dev para smoke test do Native Image — sobrescreva com -Ddb.url=... -->
         <db.url>jdbc:oracle:thin:@//192.168.0.74:1521/DESENV</db.url>
         <db.username>wonder</db.username>
