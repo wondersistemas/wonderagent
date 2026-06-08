@@ -17,7 +17,7 @@ class DeployResultTest {
 
         assertThat(result.success()).isTrue();
         assertThat(result.version()).isEqualTo("2.5.0");
-        assertThat(result.duration()).isEqualTo(Duration.ofSeconds(30));
+        assertThat(result.durationSeconds()).isEqualTo(30);
         assertThat(result.stateBefore()).isEqualTo(RuntimeState.STOPPED);
         assertThat(result.stateAfter()).isEqualTo(RuntimeState.RUNNING);
         assertThat(result.failureReason()).isNull();

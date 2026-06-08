@@ -8,7 +8,7 @@ import java.time.Instant;
 public record DeployResult(
     boolean success,
     String version,
-    Duration duration,
+    long durationSeconds,
     Instant deployedAt,
     RuntimeState stateBefore,
     RuntimeState stateAfter,
@@ -16,11 +16,11 @@ public record DeployResult(
 ) {
     public static DeployResult success(String version, Duration duration,
                                        RuntimeState before, RuntimeState after) {
-        return new DeployResult(true, version, duration, Instant.now(), before, after, null);
+        return new DeployResult(true, version, duration.toSeconds(), Instant.now(), before, after, null);
     }
 
     public static DeployResult failure(String version, Duration duration,
                                        RuntimeState before, RuntimeState after, String reason) {
-        return new DeployResult(false, version, duration, Instant.now(), before, after, reason);
+        return new DeployResult(false, version, duration.toSeconds(), Instant.now(), before, after, reason);
     }
 }
