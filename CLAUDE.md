@@ -28,22 +28,23 @@ em servidores Windows de clientes. O acesso é indireto (RDP, às vezes com VPN 
 - O agente não se auto-atualiza — atualização do `wonderagent.exe` é manual ou via script PowerShell externo.
 - Toda comunicação com o servidor central é HTTPS de saída (porta 443) — sem porta de entrada aberta no servidor do cliente.
 
-## Módulos
+## Estrutura do projeto
+
+Projeto Maven único (sem sub-módulos). Pacotes Java sob `src/main/java/br/com/wonder/agent/`:
 
 ```
-agent-model           ← DTOs, enums, interfaces — zero dependências externas
-agent-core            ← StateMachine, DeployPipeline, AgentOrchestrator (poll loop)
-agent-drivers         ← WildflyDriver (+ futuros QuarkusDriver, ProxyDriver)
-agent-central-client  ← CentralClient REST (MicroProfile Rest Client)
-agent-cli             ← Entry point Picocli + produz o .exe via Native Image
+model/        ← DTOs, enums, interfaces, FileChecksum
+model/driver/ ← interface RuntimeDriver
+central/      ← CentralClient REST (MicroProfile Rest Client)
+core/         ← StateMachine, DeployPipeline, AgentOrchestrator (poll loop)
+driver/       ← WildflyDriver, DriverProducer (+ futuros QuarkusDriver, ProxyDriver)
+cli/command/  ← Entry point Picocli (WonderAgentCommand, Main)
 ```
-
-Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` não enxerga ninguém.
 
 ## Estado atual da implementação
 
 ### Implementado
-- Interfaces e DTOs completos em `agent-model`
+- Interfaces e DTOs completos em `model/`
 - `StateMachine` com `detectAndRecover()`
 - `DeployPipeline` com sequência completa (stop → deploy → start → healthCheck)
 - `AgentOrchestrator` com `@Scheduled` poll loop
@@ -51,7 +52,7 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - `CentralClient` MicroProfile Rest Client
 - `WonderAgentCommand` com todos os subcomandos Picocli
 - `application.yaml` com todas as propriedades documentadas
-- Profile `native` no `agent-cli/pom.xml` para build do `.exe`
+- Profile `native` no `pom.xml` para build do `.exe`
 - `ArtifactDownloader` com download via zsync (delta transfer) de S3 público
 - `DatabaseVersionReader` com leitura de `gerenciador.id_versaodb` via `DataSource` Quarkus/Agroal (extensão `quarkus-jdbc-oracle`); retorna `Optional.empty()` sem exceção se banco não configurado
 - `AgentStatusReport` inclui campo `dbVersion` — enviado ao servidor central para que ele componha a versão do WAR no formato `1.<dbVersion>.<patch>` (branch `wildfly`)
@@ -59,9 +60,8 @@ Regra de dependência: todos os módulos enxergam `agent-model`. `agent-model` n
 - `DriverProducer` com seleção de driver via CDI `Instance<RuntimeDriver>` + `@Named`
 - Comandos `install` e `uninstall` do NSSM implementados
 - Comando `config show` implementado via `ConfigProvider`
-- `reflect-config.json`, `resource-config.json`, `proxy-config.json` e `native-image.properties` em `agent-cli/src/main/resources/META-INF/native-image/br.com.wonder/wonderagent/`
-- `META-INF/beans.xml` (`bean-discovery-mode="annotated"`) em `agent-core`, `agent-drivers`, `agent-central-client`
-- Índice Jandex gerado em `agent-model` via `jandex-maven-plugin` 3.1.7
+- `reflect-config.json`, `resource-config.json`, `proxy-config.json` e `native-image.properties` em `src/main/resources/META-INF/native-image/br.com.wonder/wonderagent/`
+- Índice Jandex gerado via `jandex-maven-plugin` 3.1.7
 - `@TopCommand` + `@ApplicationScoped` + `@Unremovable` em todos os subcomandos Picocli (sem `@Unremovable` o Quarkus remove os beans em build-time e a injeção falha com NPE)
 - `@RestClient` no injection point `AgentOrchestrator#centralClient`
 - `@Typed(WildflyDriver.class)` em `WildflyDriver` evita ambiguidade CDI; por isso `DriverProducer` injeta `Instance<WildflyDriver>` (tipo concreto) em vez de `Instance<RuntimeDriver>`
@@ -105,7 +105,7 @@ O wonderagent não depende do wnfe — são projetos separados.
 
 ```bash
 # JVM (desenvolvimento — Linux ou Windows)
-mvn clean package -Dmaven.test.skip=true -pl agent-cli -am
+mvn clean package -Dmaven.test.skip=true
 
 # Native Image no Linux (validação — gera binário Linux)
 mvn clean package -Pnative -Dmaven.test.skip=true
