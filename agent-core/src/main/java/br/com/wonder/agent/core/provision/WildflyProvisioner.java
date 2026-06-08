@@ -219,20 +219,56 @@ public class WildflyProvisioner {
         }
 
         String targetVersion = version != null ? version : extractVersionFromFilename(zipFile.getFileName().toString());
-        String installed = readInstalledVersion();
-        if (targetVersion.equals(installed)) {
-            progress.accept("WildFly já está na versão " + targetVersion + " — nenhuma ação necessária");
+
+        String cachedSha1 = sha1OfFile(zipFile);
+        String installedSha1 = readInstalledSha1();
+        log.trace("applyFromCache: zip={} versão={} sha1Cache={} sha1Instalado={}",
+                zipFile.getFileName(), targetVersion,
+                cachedSha1 != null ? cachedSha1.substring(0, 8) + "..." : "erro ao calcular",
+                installedSha1 != null ? installedSha1.substring(0, 8) + "..." : "ausente");
+
+        if (cachedSha1 != null && installedSha1 != null && cachedSha1.equals(installedSha1)) {
+            log.debug("applyFromCache: SHA-1 confere ({}) — nada a fazer", cachedSha1.substring(0, 8) + "...");
+            progress.accept("WildFly já está na build atual (SHA-1 confere) — nenhuma ação necessária");
             return false;
+        }
+
+        if (installedSha1 == null) {
+            log.debug("applyFromCache: SHA-1 instalado ausente — aplicando mesmo que versão lógica seja igual");
+        } else {
+            log.debug("applyFromCache: SHA-1 diverge (cache={} instalado={}) — aplicando",
+                    cachedSha1 != null ? cachedSha1.substring(0, 8) + "..." : "incalculável",
+                    installedSha1.substring(0, 8) + "...");
         }
 
         progress.accept("Aplicando WildFly " + targetVersion + " a partir do cache...");
         extractZip(zipFile, Path.of(wildflyHome));
         writeInstalledVersion(targetVersion);
+        if (cachedSha1 != null) {
+            try { writeInstalledSha1(cachedSha1); }
+            catch (ProvisioningException e) { log.warn("Não foi possível gravar {}: {}", SHA_MARKER, e.getMessage()); }
+        }
         progress.accept("WildFly " + targetVersion + " aplicado com sucesso em " + wildflyHome);
         return true;
     }
 
     // ── privados ────────────────────────────────────────────────────────────────
+
+    private static String sha1OfFile(Path file) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-1");
+            try (InputStream in = Files.newInputStream(file)) {
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) != -1) md.update(buf, 0, n);
+            }
+            StringBuilder sb = new StringBuilder(40);
+            for (byte b : md.digest()) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     private void stopRuntimeIfRunning(Consumer<String> progress) {
         // Usa checagem de porta em vez de detectState() para contornar limitação do
