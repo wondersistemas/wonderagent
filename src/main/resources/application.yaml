@@ -3,6 +3,8 @@ agent:
   version: "1.0.0-SNAPSHOT"
   poll-interval: "PT300S"           # ISO 8601 duration — PT30S=30s, PT5M=5min
   home: "${user.dir}/wonderagent-data" # raiz de logs, downloads e wildfly padrão
+  central-url: "${CENTRAL_URL:https://deploy.wonder.com.br}"
+  jwt-token: "${AGENT_JWT_TOKEN:}"
 
 "%dev":
   agent:
@@ -21,9 +23,6 @@ quarkus:
       artifact-id: zsync-core
   rest-client:
     central-api:
-      url: "${agent.central-url:https://deploy.wonder.com.br}"
-      headers:
-        Authorization: "Bearer ${agent.jwt-token:}"
       connect-timeout: 10000
       read-timeout: 30000
 
@@ -39,6 +38,8 @@ quarkus:
     password: "${DB_PASSWORD:}"
     jdbc:
       url: "${DB_URL:}"
+      # Agente só lê dados — sem JTA/XA, sem transaction manager (elimina Narayana do binário)
+      transactions: disabled
 
   log:
     level: INFO

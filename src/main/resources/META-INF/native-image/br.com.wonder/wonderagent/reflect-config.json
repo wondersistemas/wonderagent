@@ -18,19 +18,7 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "br.com.wonder.agent.model.deploy.Artifact",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "br.com.wonder.agent.model.deploy.DeployResult",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.model.deploy.HealthStatus",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
     "allDeclaredMethods": true
@@ -42,87 +30,8 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand",
+    "name": "org.apache.mina.proxy.utils.MD4",
     "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$StatusCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$DetectCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$CheckCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$InstallCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$UninstallCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$ConfigCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$ConfigCommand$ShowCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$DownloadServerCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$ApplyServerCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.cli.command.WonderAgentCommand$ProvisionCommand",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.driver.DriverProducer",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.driver.wildfly.WildflyDriver",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.core.download.ArtifactDownloader",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
     "allDeclaredMethods": true
   },
   {
@@ -134,15 +43,6 @@
     "name": "com.salesforce.zsync.Zsync$Options",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "br.com.wonder.agent.central.CentralClient",
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "org.apache.mina.proxy.utils.MD4",
-    "allDeclaredConstructors": true,
     "allDeclaredMethods": true
   },
   {

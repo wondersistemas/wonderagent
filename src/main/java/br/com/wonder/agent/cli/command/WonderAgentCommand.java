@@ -18,6 +18,7 @@ import picocli.CommandLine.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Comandos CLI do agente. Entry point: wonderagent.exe [comando]
@@ -62,7 +63,15 @@ public class WonderAgentCommand implements Runnable {
     public void run() {
         log.info("Iniciando WonderAgent em modo serviço");
         orchestrator.startServiceMode();
-        // O scheduler do Quarkus mantém o processo vivo
+        orchestrator.startScheduler();
+        // Bloqueia a thread main até Ctrl+C / shutdown do serviço Windows
+        CountDownLatch latch = new CountDownLatch(1);
+        Runtime.getRuntime().addShutdownHook(new Thread(latch::countDown, "wonderagent-shutdown"));
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     static void enableTrace(boolean trace) {
