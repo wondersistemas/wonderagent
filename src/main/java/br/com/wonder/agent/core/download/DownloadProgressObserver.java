@@ -65,8 +65,12 @@ public class DownloadProgressObserver extends ZsyncObserver {
     }
 
     private String buildLine(long downloaded, int pct, double speedKBs) {
+        return formatProgress(downloaded, totalBytes, pct, speedKBs);
+    }
+
+    static String formatProgress(long downloaded, long total, int pct, double speedKBs) {
         return String.format("  %s / %s (%d%%)  %s",
-                formatSize(downloaded), formatSize(totalBytes), pct, formatSpeed(speedKBs));
+                formatSize(downloaded), formatSize(total), pct, formatSpeed(speedKBs));
     }
 
     private static String formatSize(long bytes) {

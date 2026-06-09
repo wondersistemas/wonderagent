@@ -136,15 +136,14 @@ class ArtifactDownloaderTest {
     }
 
     @Test
-    void download_quandoSemArquivoExistente_naoAdicionaInputFile() throws Exception {
-        Path downloaded = tempDir.resolve("wnfe-war-2.999.war");
-        when(zsync.zsync(any(), any(), any())).thenReturn(downloaded);
+    void download_quandoSemArquivoExistente_usaHttpDiretoSemChamarZsync() throws Exception {
+        // Sem base delta: deve tentar HTTP direto (não zsync). O servidor não existe no
+        // ambiente de teste, então a exception é de rede/HTTP — não de zsync.
+        assertThatThrownBy(() -> downloader.download(artifact()))
+                .isInstanceOf(ArtifactDownloader.DownloadException.class)
+                .hasMessageContaining("wnfe-war:2.999");
 
-        downloader.download(artifact());
-
-        ArgumentCaptor<Zsync.Options> optCaptor = ArgumentCaptor.forClass(Zsync.Options.class);
-        verify(zsync).zsync(any(), optCaptor.capture(), any());
-        assertThat(optCaptor.getValue().getInputFiles()).isEmpty();
+        verify(zsync, never()).zsync(any(), any(), any());
     }
 
     @Test
@@ -163,6 +162,9 @@ class ArtifactDownloaderTest {
 
     @Test
     void download_quandoZsyncFalha_lancaDownloadException() throws Exception {
+        // Precisa de base delta para entrar no caminho zsync
+        Path war = tempDir.resolve("wnfe-war-2.999.war");
+        writeAligned(war, "previous-war-content");
         when(zsync.zsync(any(), any(), any())).thenThrow(new ZsyncException("repositório inacessível"));
 
         assertThatThrownBy(() -> downloader.download(artifact()))

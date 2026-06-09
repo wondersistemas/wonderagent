@@ -26,20 +26,15 @@ quarkus:
       connect-timeout: 10000
       read-timeout: 30000
 
-  datasource:
-    # Conexão Oracle para leitura de gerenciador.id_versaodb.
-    # Se DB_URL estiver vazio, o DataSource fica inativo e a leitura é ignorada.
-    # Configurar em C:\ProgramData\WonderAgent\.env:
-    #   DB_URL=jdbc:oracle:thin:@//localhost:1521/ORCL
-    #   DB_USERNAME=usuario
-    #   DB_PASSWORD=senha
-    db-kind: oracle
-    username: "${DB_USERNAME:}"
-    password: "${DB_PASSWORD:}"
-    jdbc:
-      url: "${DB_URL:}"
-      # Agente só lê dados — sem JTA/XA, sem transaction manager (elimina Narayana do binário)
-      transactions: disabled
+db:
+  # Conexão Oracle para leitura de gerenciador.id_versaodb.
+  # Configurar em C:\ProgramData\WonderAgent\.env:
+  #   DB_URL=jdbc:oracle:thin:@//localhost:1521/ORCL
+  #   DB_USERNAME=usuario
+  #   DB_PASSWORD=senha
+  url: "${DB_URL:}"
+  username: "${DB_USERNAME:}"
+  password: "${DB_PASSWORD:}"
 
   log:
     level: INFO

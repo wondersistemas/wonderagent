@@ -178,12 +178,21 @@ public class ZsyncDownloadHelper {
 
         prepareBaseFile(outFile, zsOld, progress);
 
+        // Sem base delta: zsync emitiria um range request por bloco (o Reposilite não
+        // suporta multipart ranges, então o interceptor serializa). Para um WAR de 127 MB
+        // com blocos de 4096 bytes isso resulta em ~32k requests sequenciais — muito mais
+        // lento do que um único stream HTTP direto.
+        if (!Files.exists(zsOld)) {
+            log.info("Sem base delta — usando download HTTP direto: {}", zipUrl);
+            Path result = downloadDirect(zipUrl, outFile, progress);
+            padToBlockBoundary(result);
+            return result;
+        }
+
         Zsync.Options options = new Zsync.Options()
                 .setOutputFile(outFile)
                 .putCredentials(host, new Credentials(username, password.orElse("")));
-        if (Files.exists(zsOld)) {
-            options = options.addInputFile(zsOld);
-        }
+        options = options.addInputFile(zsOld);
 
         DownloadProgressObserver observer = new DownloadProgressObserver(progress);
         try {
@@ -223,12 +232,15 @@ public class ZsyncDownloadHelper {
 
         prepareBaseFile(outFile, zsOld, progress);
 
+        if (!Files.exists(zsOld)) {
+            log.info("Sem base delta — usando download HTTP direto: {}", zipUrl);
+            return downloadDirect(zipUrl, outFile, progress);
+        }
+
         Zsync.Options options = new Zsync.Options()
                 .setOutputFile(outFile)
                 .putCredentials(host, new Credentials(username, password.orElse("")));
-        if (Files.exists(zsOld)) {
-            options = options.addInputFile(zsOld);
-        }
+        options = options.addInputFile(zsOld);
 
         DownloadProgressObserver observer = new DownloadProgressObserver(progress);
         try {
@@ -306,13 +318,31 @@ public class ZsyncDownloadHelper {
                 throw new DownloadHelperException("Falha HTTP " + status + " ao baixar " + url, null);
             }
             long total = conn.getContentLengthLong();
-            try (InputStream in = conn.getInputStream()) {
-                Files.copy(in, outFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-            if (total > 0) {
-                progress.accept("  Download concluído: " + (total / 1024 / 1024) + " MB");
-            } else {
-                progress.accept("  Download concluído");
+            long startTime = System.currentTimeMillis();
+            try (InputStream in = conn.getInputStream();
+                 java.io.OutputStream out = Files.newOutputStream(outFile,
+                         java.nio.file.StandardOpenOption.CREATE,
+                         java.nio.file.StandardOpenOption.TRUNCATE_EXISTING)) {
+                byte[] buf = new byte[64 * 1024];
+                long downloaded = 0;
+                int lastReportedPct = -1;
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    out.write(buf, 0, n);
+                    downloaded += n;
+                    if (total > 0) {
+                        int pct = (int) Math.min(100, downloaded * 100 / total);
+                        if (pct / 5 > lastReportedPct / 5) {
+                            lastReportedPct = pct;
+                            long elapsed = System.currentTimeMillis() - startTime;
+                            double speedKBs = elapsed > 0 ? (downloaded / 1024.0) / (elapsed / 1000.0) : 0;
+                            progress.accept(DownloadProgressObserver.formatProgress(downloaded, total, pct, speedKBs));
+                        }
+                    }
+                }
+                long elapsed = System.currentTimeMillis() - startTime;
+                double speedKBs = elapsed > 0 ? (downloaded / 1024.0) / (elapsed / 1000.0) : 0;
+                progress.accept(DownloadProgressObserver.formatProgress(downloaded, total > 0 ? total : downloaded, 100, speedKBs));
             }
             conn.disconnect();
             return outFile;

@@ -309,6 +309,10 @@ class WildflyProvisionerTest {
 
     @Test
     void ensureVersion_extraiConteudoDoZip() throws Exception {
+        // Cria arquivo base alinhado para que zsync seja usado (sem base → HTTP direto)
+        String filename = "wildfly-provisioning-" + VERSION + "-dist.zip";
+        Files.write(tempDir.resolve(filename), new byte[4096]);
+
         when(zsync.zsync(any(), any(), any())).thenAnswer(inv -> {
             Zsync.Options opts = inv.getArgument(1);
             Path outFile = opts.getOutputFile();
@@ -580,7 +584,13 @@ class WildflyProvisionerTest {
      * de chamar zsync — se o mock retornasse o path original ele estaria inválido.
      */
     private void mockZsyncComZip(String version) throws Exception {
+        // Cria arquivo base alinhado a 4096 no tempDir para que ZsyncDownloadHelper
+        // detecte a base delta e use zsync (sem isso, vai para HTTP direto).
         String filename = "wildfly-provisioning-" + version + "-dist.zip";
+        Path existing = tempDir.resolve(filename);
+        byte[] block = new byte[4096];
+        Files.write(existing, block);
+
         when(zsync.zsync(any(), any(), any())).thenAnswer(inv -> {
             Zsync.Options opts = inv.getArgument(1);
             Path outFile = opts.getOutputFile();
