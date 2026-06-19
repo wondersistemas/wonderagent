@@ -46,6 +46,12 @@
     "allDeclaredMethods": true
   },
   {
+    "name": "oracle.jdbc.OracleDriver",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "registerAsServiceProvider": true
+  },
+  {
     "name": "oracle.jdbc.diagnostics.DefaultTraceEventListenerProvider",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true

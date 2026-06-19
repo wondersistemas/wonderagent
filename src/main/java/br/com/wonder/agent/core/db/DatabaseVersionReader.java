@@ -36,6 +36,13 @@ public class DatabaseVersionReader {
             return Optional.empty();
         }
 
+        try {
+            Class.forName("oracle.jdbc.OracleDriver");
+        } catch (ClassNotFoundException e) {
+            log.error("Driver Oracle não encontrado no classpath", e);
+            return Optional.empty();
+        }
+
         try (Connection conn = DriverManager.getConnection(
                 jdbcUrl.get(),
                 username.orElse(""),

@@ -4,7 +4,10 @@
       { "pattern": "application.yaml" },
       { "pattern": "META-INF/microprofile-config.properties" },
       { "pattern": "META-INF/services/.*" },
-      { "pattern": "META-INF/beans.xml" }
+      { "pattern": "META-INF/beans.xml" },
+      { "pattern": "oracle/sql/converter_xcharset/.*\\.glb" },
+      { "pattern": "oracle/jdbc/driver/errorMap.xml" },
+      { "pattern": "oracle/jdbc/defaultConnectionProperties.properties" }
     ]
   },
   "bundles": []
