@@ -86,6 +86,6 @@ Estado inicial: STOPPED ou RUNNING/UP_TO_DATE/DEPLOY_FAILED
 ## Timeouts configuráveis
 
 Ver `driver.wildfly.*` em [../operations/configuration.md](../operations/configuration.md):
-- `start-timeout-seconds` (padrão: 180)
+- `start-timeout-seconds` (padrão: 300)
 - `stop-timeout-seconds` (padrão: 60)
 - `health-check-url` com timeout de conexão de 5s

@@ -77,7 +77,7 @@ WONDER_REPO_PASSWORD=senha-aqui
 | `driver.wildfly.management-port` | Não | `9990` | Porta da management API |
 | `driver.wildfly.deploy-path` | Não | `{driver.wildfly.home}/standalone/deployments` | Diretório de deployments |
 | `driver.wildfly.artifact-name` | Sim | — | Nome do arquivo WAR (ex: `wnfe.war`) |
-| `driver.wildfly.start-timeout-seconds` | Não | `180` | Timeout para confirmar RUNNING após start |
+| `driver.wildfly.start-timeout-seconds` | Não | `300` | Timeout para confirmar RUNNING após start |
 | `driver.wildfly.stop-timeout-seconds` | Não | `60` | Timeout para confirmar STOPPED após stop |
 | `driver.wildfly.health-check-url` | Sim | — | URL para health check HTTP |
 

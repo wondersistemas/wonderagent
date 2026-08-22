@@ -59,7 +59,7 @@ driver:
     management-port: 9990
     deploy-path: "${driver.wildfly.home}/standalone/deployments"
     artifact-name: "wnfe.war"
-    start-timeout-seconds: 180
+    start-timeout-seconds: 300
     stop-timeout-seconds: 60
     health-check-url: "http://localhost:8080/probusweb/seam/resource/probusrest/health"
     # Cada tentativa aguarda este timeout para conexão e leitura da resposta HTTP.
