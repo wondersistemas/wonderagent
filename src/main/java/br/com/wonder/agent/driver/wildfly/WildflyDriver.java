@@ -190,6 +190,12 @@ public class WildflyDriver implements RuntimeDriver {
             } else {
                 pb = new ProcessBuilder(wildflyHome + "/bin/standalone.bat");
                 loadWildflyEnvInto(pb.environment());
+                // Sem isso, o WildFly bloqueia ao encher o buffer do pipe de stdout/stderr assim
+                // que o boot gera muito log (WAR grande) — ninguém aqui drena esses streams, e o
+                // processo só destrava quando o wonderagent termina e o handle do pipe é fechado.
+                // O branch Linux já evita isso via "> /dev/null 2>&1".
+                pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+                pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             }
             pb.directory(Path.of(wildflyHome).toFile()).start();
             boolean started = waitForState(RuntimeState.RUNNING, startTimeoutSeconds);
