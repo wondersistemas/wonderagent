@@ -57,6 +57,7 @@ cli/command/  ← Entry point Picocli (WonderAgentCommand, Main)
 - `DatabaseVersionReader` com leitura de `gerenciador.id_versaodb` via `DriverManager` direto (sem Agroal/pool); usa `quarkus-jdbc-oracle` apenas para incluir o driver Oracle no Native Image corretamente; retorna `Optional.empty()` sem exceção se banco não configurado
 - `AgentStatusReport` inclui campo `dbVersion` — enviado ao servidor central para que ele componha a versão do WAR no formato `1.<dbVersion>.<patch>` (branch `wildfly`)
 - Conexão Oracle configurável via `.env`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` — mapeados para propriedades `db.*` no `application.yaml`; leitura ignorada quando `DB_URL` está vazio
+- Credenciais de banco do `.env` do agente são propagadas para `{wildfly.home}/.env` (`DB_URL`, `DB_USER`, `DB_PASSWORD`) em todo provisionamento — inclusive `apply-server`; o `.env` do agente é a fonte da verdade e o upsert preserva as demais linhas. O usuário admin da management API é recriado quando a extração do ZIP zera o `mgmt-users.properties`
 - `DriverProducer` com seleção de driver via CDI `Instance<RuntimeDriver>` + `@Named`
 - Comandos `install` e `uninstall` do NSSM implementados
 - Comando `config show` implementado via `ConfigProvider`

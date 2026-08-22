@@ -48,6 +48,7 @@ class WildflyProvisionerTest {
     static final String VERSION = "1.0.0-SNAPSHOT";
     static final String REMOTE_SHA1 = "aabbccdd11223344aabbccdd11223344aabbccdd";
     static final String OTHER_SHA1  = "1111111111111111111111111111111111111111";
+    static final String DB_HEADER = "# Banco de dados Oracle";
 
     @BeforeEach
     void setUp() throws Exception {
@@ -498,26 +499,81 @@ class WildflyProvisionerTest {
         assertThat(result).isFalse();
     }
 
-    // ── setupManagementUser ───────────────────────────────────────────────────
+    // ── setupWildflyEnv ───────────────────────────────────────────────────
 
     @Test
-    void setupManagementUser_quandoCredenciaisJaExistem_naoSobrescreve() throws Exception {
+    void setupWildflyEnv_quandoCredenciaisJaExistem_naoSobrescreve() throws Exception {
+        Path configDir = wildflyHome.resolve("standalone/configuration");
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("mgmt-users.properties"), "admin=abc123\n");
         Path envFile = wildflyHome.resolve(".env");
         Files.writeString(envFile, "WILDFLY_MGMT_USER=admin\nWILDFLY_MGMT_PASSWORD=existente\n");
 
-        provisioner.setupManagementUser(msg -> {});
+        provisioner.setupWildflyEnv(msg -> {});
 
         assertThat(envFile).hasContent("WILDFLY_MGMT_USER=admin\nWILDFLY_MGMT_PASSWORD=existente\n");
     }
 
     @Test
-    void setupManagementUser_quandoMgmtUserPropsExiste_escreveHashEEnv() throws Exception {
+    void setupWildflyEnv_quandoAdminSumiuDoMgmtUsers_recriaCredenciais() throws Exception {
+        // Cenário pós-extração: o ZIP repõe mgmt-users.properties sem o admin,
+        // mas o .env ainda tem a senha antiga — precisa regerar.
+        Path configDir = wildflyHome.resolve("standalone/configuration");
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("mgmt-users.properties"), "#$REALM_NAME=ManagementRealm$\n");
+        Path envFile = wildflyHome.resolve(".env");
+        Files.writeString(envFile, "WILDFLY_MGMT_USER=admin\nWILDFLY_MGMT_PASSWORD=antiga\n");
+
+        provisioner.setupWildflyEnv(msg -> {});
+
+        assertThat(Files.readString(configDir.resolve("mgmt-users.properties"))).contains("admin=");
+        String env = Files.readString(envFile);
+        assertThat(env).doesNotContain("WILDFLY_MGMT_PASSWORD=antiga");
+        assertThat(env).contains("WILDFLY_MGMT_PASSWORD=");
+    }
+
+    @Test
+    void setupWildflyEnv_quandoDbMudouNoAgente_atualizaEnvSemDuplicar() throws Exception {
+        Path configDir = wildflyHome.resolve("standalone/configuration");
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("mgmt-users.properties"), "admin=abc123\n");
+        Path envFile = wildflyHome.resolve(".env");
+        Files.writeString(envFile, """
+                # Banco de dados Oracle
+                DB_URL=jdbc:oracle:thin:@//antigo:1521/ANTIGO
+                DB_USER=antigo
+                DB_PASSWORD=antiga
+
+                # Credenciais do usuário admin da management API (porta 9990)
+                WILDFLY_MGMT_USER=admin
+                WILDFLY_MGMT_PASSWORD=existente
+                """);
+        setField(provisioner, "dbUrl", Optional.of("jdbc:oracle:thin:@//novo:1521/NOVO"));
+        setField(provisioner, "dbUsername", Optional.of("novo"));
+        setField(provisioner, "dbPassword", Optional.of("nova"));
+
+        provisioner.setupWildflyEnv(msg -> {});
+
+        String env = Files.readString(envFile);
+        assertThat(env).contains("DB_URL=jdbc:oracle:thin:@//novo:1521/NOVO");
+        assertThat(env).contains("DB_USER=novo");
+        assertThat(env).contains("DB_PASSWORD=nova");
+        assertThat(env).doesNotContain("ANTIGO");
+        assertThat(env).doesNotContain("DB_USER=antigo");
+        // credenciais de management preservadas e sem duplicação de chaves
+        assertThat(env).contains("WILDFLY_MGMT_PASSWORD=existente");
+        assertThat(env.lines().filter(l -> l.startsWith("DB_URL=")).count()).isEqualTo(1);
+        assertThat(env.lines().filter(l -> l.equals(DB_HEADER)).count()).isEqualTo(1);
+    }
+
+    @Test
+    void setupWildflyEnv_quandoMgmtUserPropsExiste_escreveHashEEnv() throws Exception {
         Path configDir = wildflyHome.resolve("standalone/configuration");
         Files.createDirectories(configDir);
         Files.writeString(configDir.resolve("mgmt-users.properties"),
                 "#$REALM_NAME=ManagementRealm$\n");
 
-        provisioner.setupManagementUser(msg -> {});
+        provisioner.setupWildflyEnv(msg -> {});
 
         String props = Files.readString(configDir.resolve("mgmt-users.properties"));
         assertThat(props).contains("admin=");
@@ -527,7 +583,7 @@ class WildflyProvisionerTest {
     }
 
     @Test
-    void setupManagementUser_quandoDbConfigurado_escreveVariaveisNoBanco() throws Exception {
+    void setupWildflyEnv_quandoDbConfigurado_escreveVariaveisNoBanco() throws Exception {
         Path configDir = wildflyHome.resolve("standalone/configuration");
         Files.createDirectories(configDir);
         Files.writeString(configDir.resolve("mgmt-users.properties"), "#$REALM_NAME=ManagementRealm$\n");
@@ -535,7 +591,7 @@ class WildflyProvisionerTest {
         setField(provisioner, "dbUsername", Optional.of("wonder"));
         setField(provisioner, "dbPassword", Optional.of("wonder"));
 
-        provisioner.setupManagementUser(msg -> {});
+        provisioner.setupWildflyEnv(msg -> {});
 
         String env = Files.readString(wildflyHome.resolve(".env"));
         assertThat(env).contains("DB_URL=jdbc:oracle:thin:@//192.168.0.74:1521/DESENV");
@@ -546,10 +602,10 @@ class WildflyProvisionerTest {
     }
 
     @Test
-    void setupManagementUser_quandoMgmtUserPropsAusente_naoLancaExcecao() {
+    void setupWildflyEnv_quandoMgmtUserPropsAusente_naoLancaExcecao() {
         // mgmt-users.properties não existe — deve absorver silenciosamente
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(
-                () -> provisioner.setupManagementUser(msg -> {}));
+                () -> provisioner.setupWildflyEnv(msg -> {}));
     }
 
     // ── md5Hex ────────────────────────────────────────────────────────────────

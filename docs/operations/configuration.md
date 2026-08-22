@@ -21,7 +21,8 @@ C:\ProgramData\WonderAgent\          ← agent.home
   wildfly\                           ← driver.wildfly.home
     .wildfly-version                 ← versão lógica do WildFly instalado
     .wildfly-sha1                    ← SHA-1 do ZIP instalado (detecção de nova build)
-    .env                             ← variáveis do WildFly: DB_URL, DB_USER, DB_PASSWORD, WILDFLY_MGMT_USER, WILDFLY_MGMT_PASSWORD
+    .env                             ← variáveis do WildFly (geradas no provisionamento):
+                                       DB_URL, DB_USER, DB_PASSWORD, WILDFLY_MGMT_USER, WILDFLY_MGMT_PASSWORD
     bin\
     standalone\
       deployments\                   ← driver.wildfly.deploy-path
@@ -146,6 +147,23 @@ Se `db.url` estiver vazio, a leitura é silenciosamente ignorada e `dbVersion` �
 | `db.url` | Não | `` (vazio) | JDBC URL do Oracle local. Ex: `jdbc:oracle:thin:@//localhost:1521/ORCL`. Lido de `${DB_URL}` no `.env` |
 | `db.username` | Não | `` (vazio) | Usuário Oracle. Lido de `${DB_USERNAME}` no `.env` |
 | `db.password` | Não | `` (vazio) | Senha Oracle. Lido de `${DB_PASSWORD}` no `.env` |
+
+### Propagação para o WildFly
+
+A cada provisionamento (`provisionar`, `apply-server` ou provisionamento automático
+no poll loop) essas credenciais são gravadas no `.env` do WildFly
+(`{driver.wildfly.home}\.env`), que o driver exporta como variáveis de ambiente antes
+de iniciar o servidor — é assim que o `standalone.xml` provisionado resolve o datasource:
+
+| `.env` do agente | `.env` do WildFly |
+|---|---|
+| `DB_URL` | `DB_URL` |
+| `DB_USERNAME` | `DB_USER` (nome esperado pelo `standalone.xml`) |
+| `DB_PASSWORD` | `DB_PASSWORD` |
+
+O `.env` do agente é a fonte da verdade: valores alterados nele sobrescrevem os do
+WildFly no próximo provisionamento. Variáveis vazias ou ausentes no agente não apagam
+o que já estiver no `.env` do WildFly, e as demais linhas do arquivo são preservadas.
 
 ---
 

@@ -64,8 +64,13 @@ WILDFLY_SERVICE_MODE=true
 ```
 
 > **Credenciais do WildFly**: `WILDFLY_MGMT_USER` e `WILDFLY_MGMT_PASSWORD` são
-> geradas automaticamente pelo agente no primeiro `provision`. Não é necessário
-> configurá-las manualmente.
+> geradas automaticamente pelo agente no primeiro provisionamento e regravadas
+> sempre que a extração de um novo ZIP zerar o `mgmt-users.properties`. Não é
+> necessário configurá-las manualmente.
+>
+> **Credenciais do banco**: `DB_URL`, `DB_USERNAME` e `DB_PASSWORD` acima também são
+> propagadas para o `.env` do WildFly (como `DB_URL`, `DB_USER`, `DB_PASSWORD`) a cada
+> provisionamento — ver [configuration.md](configuration.md#propagação-para-o-wildfly).
 
 Ver [configuration.md](configuration.md) para referência completa.
 

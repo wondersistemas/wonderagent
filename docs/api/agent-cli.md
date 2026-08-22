@@ -96,6 +96,10 @@ Extrai e instala o ZIP do WildFly já presente no cache local. Execute `download
 |---|---|
 | `--version` | Versão a aplicar. Se omitido, usa o ZIP mais recente no cache. |
 
+Após extrair, sincroniza o `.env` do WildFly com as credenciais de banco do `.env` do
+agente e recria o usuário admin da management API (a extração zera o
+`mgmt-users.properties`).
+
 ### `db-version`
 Lê `gerenciador.id_versaodb` do banco Oracle e imprime na saída padrão.
 Requer `DB_URL`, `DB_USERNAME` e `DB_PASSWORD` configurados no `.env`.

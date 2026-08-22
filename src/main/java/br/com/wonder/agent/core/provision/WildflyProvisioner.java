@@ -19,7 +19,11 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
@@ -44,6 +48,8 @@ public class WildflyProvisioner {
     private static final String CLASSIFIER = "dist";
     private static final String VERSION_MARKER = ".wildfly-version";
     private static final String SHA_MARKER = ".wildfly-sha1";
+    private static final String DB_ENV_HEADER = "# Banco de dados Oracle";
+    private static final String MGMT_ENV_HEADER = "# Credenciais do usuário admin da management API (porta 9990)";
 
     @ConfigProperty(name = "download.repository.url")
     String repositoryUrl;
@@ -75,13 +81,15 @@ public class WildflyProvisioner {
                     defaultValue = "wnfe-releases")
     String repoPath;
 
-    @ConfigProperty(name = "quarkus.datasource.jdbc.url", defaultValue = "")
+    // Credenciais do banco vindas do .env do agente (DB_URL/DB_USERNAME/DB_PASSWORD
+    // mapeadas para db.* no application.yaml) — propagadas para o .env do WildFly.
+    @ConfigProperty(name = "db.url", defaultValue = "")
     Optional<String> dbUrl;
 
-    @ConfigProperty(name = "quarkus.datasource.username", defaultValue = "")
+    @ConfigProperty(name = "db.username", defaultValue = "")
     Optional<String> dbUsername;
 
-    @ConfigProperty(name = "quarkus.datasource.password", defaultValue = "")
+    @ConfigProperty(name = "db.password", defaultValue = "")
     Optional<String> dbPassword;
 
     @Inject
@@ -152,7 +160,7 @@ public class WildflyProvisioner {
         Path zipFile = downloadZipByFileValue(targetVersion, fileValue, progress);
         stopRuntimeIfRunning(progress);
         extractZip(zipFile, Path.of(wildflyHome));
-        setupManagementUser(progress);
+        setupWildflyEnv(progress);
         writeInstalledVersion(targetVersion);
         remoteSha1.ifPresent(sha1 -> {
             try { writeInstalledSha1(sha1); }
@@ -244,6 +252,9 @@ public class WildflyProvisioner {
 
         progress.accept("Aplicando WildFly " + targetVersion + " a partir do cache...");
         extractZip(zipFile, Path.of(wildflyHome));
+        // A extração reescreve standalone/configuration — o usuário admin e as
+        // variáveis de ambiente precisam ser reaplicados.
+        setupWildflyEnv(progress);
         writeInstalledVersion(targetVersion);
         if (cachedSha1 != null) {
             try { writeInstalledSha1(cachedSha1); }
@@ -294,15 +305,52 @@ public class WildflyProvisioner {
     }
 
     /**
-     * Cria o usuário admin escrevendo diretamente no mgmt-users.properties,
-     * e grava as credenciais no {wildfly.home}/.env (lido pelos scripts de serviço
-     * via systemd/init.d/Windows service wrapper para exportar as variáveis de ambiente
-     * antes de iniciar o WildFly).
-     * Se as credenciais já existirem no .env do WildFly, não recria o usuário.
+     * Sincroniza o {wildfly.home}/.env com o .env do agente e garante o usuário admin
+     * da management API.
+     *
+     * As variáveis de banco (DB_URL, DB_USER, DB_PASSWORD) são reescritas a cada
+     * provisionamento — o .env do agente é a fonte da verdade. O usuário admin é
+     * recriado quando as credenciais faltam no .env do WildFly ou quando a extração
+     * do ZIP zerou o mgmt-users.properties.
+     *
+     * O arquivo é lido pelos scripts de serviço (systemd/init.d/Windows service wrapper)
+     * e pelo próprio driver, que exporta as variáveis antes de iniciar o WildFly.
      */
-    void setupManagementUser(Consumer<String> progress) {
+    void setupWildflyEnv(Consumer<String> progress) {
         Path wildflyEnvFile = Path.of(wildflyHome, ".env");
-        if (envFileHasMgmtCredentials(wildflyEnvFile)) {
+        syncDatabaseEnvVars(wildflyEnvFile, progress);
+        setupManagementUser(wildflyEnvFile, progress);
+    }
+
+    /**
+     * Propaga DB_URL/DB_USER/DB_PASSWORD do .env do agente para o .env do WildFly.
+     * DB_USERNAME (agente) vira DB_USER (nome esperado pelo standalone.xml).
+     * Variáveis ausentes ou vazias no agente não apagam o que já existe no WildFly.
+     */
+    private void syncDatabaseEnvVars(Path envFile, Consumer<String> progress) {
+        var vars = new LinkedHashMap<String, String>();
+        dbUrl.filter(v -> !v.isBlank()).ifPresent(v -> vars.put("DB_URL", v));
+        dbUsername.filter(v -> !v.isBlank()).ifPresent(v -> vars.put("DB_USER", v));
+        dbPassword.filter(v -> !v.isBlank()).ifPresent(v -> vars.put("DB_PASSWORD", v));
+        if (vars.isEmpty()) {
+            log.debug("Nenhuma credencial de banco configurada no agente — {} não alterado", envFile);
+            return;
+        }
+        try {
+            if (upsertEnvVars(envFile, DB_ENV_HEADER, vars)) {
+                progress.accept("  Credenciais de banco do agente gravadas em " + envFile);
+                log.info("Credenciais de banco do agente propagadas para {}", envFile);
+            } else {
+                log.debug("Credenciais de banco já atualizadas em {}", envFile);
+            }
+        } catch (IOException e) {
+            log.warn("Não foi possível gravar credenciais de banco em {}: {}", envFile, e.getMessage());
+            progress.accept("  AVISO: falha ao gravar credenciais de banco em " + envFile);
+        }
+    }
+
+    private void setupManagementUser(Path wildflyEnvFile, Consumer<String> progress) {
+        if (envFileHasMgmtCredentials(wildflyEnvFile) && mgmtUserPropertiesHasAdmin()) {
             log.debug("Credenciais de management já presentes em {} — não recriando usuário", wildflyEnvFile);
             return;
         }
@@ -310,7 +358,10 @@ public class WildflyProvisioner {
         String password = generatePassword(12);
         try {
             writeMgmtUserProperties(password);
-            appendWildflyEnvVars(wildflyEnvFile, password);
+            var vars = new LinkedHashMap<String, String>();
+            vars.put("WILDFLY_MGMT_USER", "admin");
+            vars.put("WILDFLY_MGMT_PASSWORD", password);
+            upsertEnvVars(wildflyEnvFile, MGMT_ENV_HEADER, vars);
             progress.accept("  Usuário admin criado na management API do WildFly");
             log.info("Usuário admin configurado na management API; credenciais gravadas em {}", wildflyEnvFile);
         } catch (Exception e) {
@@ -325,6 +376,18 @@ public class WildflyProvisioner {
         try {
             String content = Files.readString(envFile);
             return content.contains("WILDFLY_MGMT_USER=") && content.contains("WILDFLY_MGMT_PASSWORD=");
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    // A extração do ZIP reescreve mgmt-users.properties — se o usuário admin sumiu de lá,
+    // as credenciais no .env estão órfãs e precisam ser regeradas.
+    private boolean mgmtUserPropertiesHasAdmin() {
+        Path propsFile = Path.of(wildflyHome, "standalone", "configuration", "mgmt-users.properties");
+        if (!Files.exists(propsFile)) return false;
+        try {
+            return Files.readAllLines(propsFile).stream().anyMatch(line -> line.startsWith("admin="));
         } catch (IOException e) {
             return false;
         }
@@ -362,35 +425,42 @@ public class WildflyProvisioner {
         }
     }
 
-    private void appendWildflyEnvVars(Path envFile, String mgmtPassword) throws ProvisioningException {
-        StringBuilder block = new StringBuilder();
+    /**
+     * Insere ou atualiza chaves em um arquivo .env preservando as demais linhas.
+     * As chaves de {@code vars} são removidas de onde estiverem e reescritas em bloco
+     * no final do arquivo, precedidas por {@code header}.
+     *
+     * @return true se o conteúdo do arquivo mudou
+     */
+    static boolean upsertEnvVars(Path envFile, String header, Map<String, String> vars) throws IOException {
+        List<String> existing = Files.exists(envFile) ? Files.readAllLines(envFile) : List.of();
+        String before = String.join("\n", existing);
 
-        // Banco de dados — derivado do .env do agente (DB_USERNAME → DB_USER conforme standalone.xml)
-        dbUrl.filter(v -> !v.isBlank()).ifPresent(v ->
-                block.append("\n# Banco de dados Oracle\n")
-                     .append("DB_URL=").append(v).append("\n"));
-        dbUsername.filter(v -> !v.isBlank()).ifPresent(v ->
-                block.append("DB_USER=").append(v).append("\n"));
-        dbPassword.filter(v -> !v.isBlank()).ifPresent(v ->
-                block.append("DB_PASSWORD=").append(v).append("\n"));
-
-        // Credenciais da management API
-        block.append("\n# Credenciais do usuário admin da management API (porta 9990)\n")
-             .append("WILDFLY_MGMT_USER=admin\n")
-             .append("WILDFLY_MGMT_PASSWORD=").append(mgmtPassword).append("\n");
-
-        try {
-            Files.createDirectories(envFile.getParent());
-            if (Files.exists(envFile)) {
-                Files.writeString(envFile, Files.readString(envFile) + block,
-                        java.nio.file.StandardOpenOption.WRITE,
-                        java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
-            } else {
-                Files.writeString(envFile, block.toString().stripLeading());
-            }
-        } catch (IOException e) {
-            throw new ProvisioningException("Não foi possível gravar variáveis em " + envFile, e);
+        List<String> out = new ArrayList<>();
+        for (String line : existing) {
+            if (line.strip().equals(header)) continue;
+            String key = envKeyOf(line);
+            if (key != null && vars.containsKey(key)) continue;
+            out.add(line);
         }
+        while (!out.isEmpty() && out.get(out.size() - 1).isBlank()) out.remove(out.size() - 1);
+        if (!out.isEmpty()) out.add("");
+        out.add(header);
+        vars.forEach((k, v) -> out.add(k + "=" + v));
+
+        String after = String.join("\n", out);
+        if (after.equals(before)) return false;
+        if (envFile.getParent() != null) Files.createDirectories(envFile.getParent());
+        Files.writeString(envFile, after + "\n");
+        return true;
+    }
+
+    // Nome da variável em uma linha KEY=VALUE; null para comentários e linhas em branco.
+    private static String envKeyOf(String line) {
+        String stripped = line.strip();
+        if (stripped.isEmpty() || stripped.startsWith("#")) return null;
+        int eq = stripped.indexOf('=');
+        return eq > 0 ? stripped.substring(0, eq).strip() : null;
     }
 
     static String generatePassword(int length) {
